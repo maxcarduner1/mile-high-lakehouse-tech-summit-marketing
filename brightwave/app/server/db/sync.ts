@@ -144,7 +144,7 @@ export async function syncFromDelta(
           warehouseId,
           `SELECT campaign_id, recommended_action,
                   predicted_roas_lift, predicted_net_value_usd,
-                  to_json(action_ranking) AS action_ranking, scored_at
+                  action_ranking, scored_at
            FROM ${fq('actionRecommendations')}`,
         ).catch((e) => {
           // The trainee builds this table in the ML step — until then it
