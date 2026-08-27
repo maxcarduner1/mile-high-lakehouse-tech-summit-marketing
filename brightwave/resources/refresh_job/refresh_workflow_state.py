@@ -23,11 +23,19 @@
 # MAGIC evidence artifact `state_table.json` captures.
 # MAGIC
 # MAGIC **Lakebase connection choice:** we connect DIRECTLY to Lakebase from the job
-# MAGIC (generate-database-credential OAuth token + psycopg2) rather than calling the
-# MAGIC app's `/api/admin/reset` endpoint. That endpoint does a destructive
-# MAGIC wipe+resync (it TRUNCATEs the decision rows we want to preserve) and depends
-# MAGIC on the app being up — wrong for a lightweight periodic trigger. A direct
-# MAGIC append-only INSERT is cleaner and independent of the app's lifecycle.
+# MAGIC (generate-database-credential OAuth token + a pure-Python Postgres driver)
+# MAGIC rather than calling the app's `/api/admin/reset` endpoint. That endpoint does
+# MAGIC a destructive wipe+resync (it TRUNCATEs the decision rows we want to preserve)
+# MAGIC and depends on the app being up — wrong for a lightweight periodic trigger. A
+# MAGIC direct append-only INSERT is cleaner and independent of the app's lifecycle.
+# MAGIC
+# MAGIC **Driver choice — `pg8000` (pure Python), NOT `psycopg2-binary`.** On the
+# MAGIC serverless Python kernel, any wheel that bundles a native libpq
+# MAGIC (`psycopg2-binary` *and* `psycopg[binary]`) SIGABRTs (exit 134) at **import
+# MAGIC time** in `psycopg*/pq` — the bundled libpq's OpenSSL clashes with the OpenSSL
+# MAGIC already loaded by the Spark/py4j process, aborting the kernel before we ever
+# MAGIC open a connection. `pg8000` speaks the Postgres wire protocol in pure Python
+# MAGIC (no libpq, no native OpenSSL), so it loads and connects cleanly on serverless.
 
 # COMMAND ----------
 
@@ -106,7 +114,12 @@ if position_count is not None:
         .count()
         .orderBy(F.desc("count"))
     )
-    display(bands)
+    # display() is a notebook helper; in a (non-interactive) job it can misbehave.
+    # Guard it: render interactively, just print the rows when running as a job.
+    if IN_NOTEBOOK:
+        display(bands)
+    else:
+        print(f"[refresh] perf_band counts: {[r.asDict() for r in bands.collect()]}")
 
 row_counts = {
     "gold_campaign_position": position_count,
@@ -127,7 +140,9 @@ print(f"[refresh] row counts: {row_counts}")
 
 # COMMAND ----------
 
-import psycopg2  # noqa: E402
+import ssl  # noqa: E402
+
+import pg8000.dbapi  # noqa: E402 — pure-Python PG driver (no native libpq; see header)
 from databricks.sdk import WorkspaceClient  # noqa: E402
 
 w = WorkspaceClient()
@@ -163,26 +178,33 @@ detail = {
     "rowCounts": row_counts,
 }
 
-conn = psycopg2.connect(
+# Lakebase requires TLS ("require" semantics: encrypt, don't verify the cert —
+# the endpoint uses a Databricks-managed cert, no client CA bundle on the kernel).
+ssl_context = ssl.create_default_context()
+ssl_context.check_hostname = False
+ssl_context.verify_mode = ssl.CERT_NONE
+
+conn = pg8000.dbapi.connect(
     host=host,
     port=5432,
-    dbname=PG_DATABASE,
+    database=PG_DATABASE,
     user=user,
     password=token,
-    sslmode="require",
+    ssl_context=ssl_context,
 )
 try:
-    with conn, conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO app.workflow_state
-                (event_type, trigger_source, campaign_id, status, detail)
-            VALUES (%s, %s, %s, %s, %s::jsonb)
-            RETURNING id, created_at
-            """,
-            ("trigger", "schedule", None, "ok", json.dumps(detail)),
-        )
-        new_id, created_at = cur.fetchone()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO app.workflow_state
+            (event_type, trigger_source, campaign_id, status, detail)
+        VALUES (%s, %s, %s, %s, CAST(%s AS jsonb))
+        RETURNING id, created_at
+        """,
+        ("trigger", "schedule", None, "ok", json.dumps(detail)),
+    )
+    new_id, created_at = cur.fetchone()
+    conn.commit()
     print(f"[refresh] wrote trigger row id={new_id} at {created_at}")
 finally:
     conn.close()

@@ -119,11 +119,13 @@ resources:
       name: "[Workshop] Brightwave — scheduled refresh (defined trigger)"
       description: "The Build-2 defined trigger: fires every 15 min, refreshes the ranked view source, and writes a timestamped trigger row into app.workflow_state (Lakebase)."
       # Run as the app service principal so it owns/can-write app.workflow_state
-      # without an extra grant. Left commented for the template (no SP id here);
-      # the orchestrator sets this at deploy, or grants INSERT to the job's
-      # identity (see notebook footer).
-      # run_as:
-      #   service_principal_name: <app-sp-application-id>
+      # without an extra grant. app.workflow_state is owned by this SP (Drizzle
+      # migrations run as the SP at app boot), so running the job under the same
+      # identity means no per-user Postgres GRANT is needed — the notebook mints
+      # the OAuth cred as the SP and current_user.me() resolves to the SP's role.
+      # (Deploying this requires servicePrincipal.user on the SP.)
+      run_as:
+        service_principal_name: 3c910ffb-aaf4-4505-971a-8376acf8ec48
       schedule:
         # Every 15 minutes, on the quarter hour, UTC.
         quartz_cron_expression: "0 0/15 * * * ?"
@@ -145,7 +147,11 @@ resources:
             client: "5"
             dependencies:
               - databricks-sdk
-              - psycopg2-binary
+              # pg8000 (pure-Python PG driver), NOT psycopg2-binary: any wheel that
+              # bundles a native libpq SIGABRTs the serverless kernel at import time
+              # (libpq/OpenSSL symbol clash with the Spark process). See the notebook
+              # header for the full diagnosis.
+              - pg8000
 
   # ── Databricks App: Brightwave Campaign Desk ───────────────────────────────
   # Deploys the existing `brightwave` App (AppKit Node/TS, source in ./app) and
