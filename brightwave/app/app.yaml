@@ -44,3 +44,30 @@ env:
   # placeholder resolution.
   - name: WAREHOUSE_ID
     valueFrom: sql-warehouse
+
+  # ── Plain-value env (config/app.json placeholders) ──────────────────────
+  # Normally finalize_app.sh harvests these from the setup job's exit JSON and
+  # writes them here post-run. Because this app is deployed straight from the
+  # DAB (no setup-job harvest in this workspace), the concrete IDs for the
+  # fe-sandbox-serverless-sandbox-kgi5wi workspace are pinned as literals.
+  # ⚠️ When forking for another workspace, re-render these (or run
+  #    finalize_app.sh). The bundle can NOT ${var}-substitute a source app.yaml.
+  - name: DEMO_CATALOG
+    value: "serverless_sandbox_kgi5wi_catalog"
+  - name: DEMO_SCHEMA
+    value: "brightwave"
+  # ask_data backend → Genie space (Brightwave uses Genie; MAS left empty).
+  - name: GENIE_SPACE_ID
+    value: "01f1a23cb2351042be83c6d1f552fa67"
+  # Embedded AI/BI campaign-performance dashboard.
+  - name: DASHBOARD_ID
+    value: "01f1a23d02001faab2184ad40dce0b8b"
+  # SDP pipeline (brightwave_campaign_360) → PlatformDiagram deep-link tile.
+  - name: PIPELINE_ID
+    value: "ff86c416-9b67-495b-8c84-0d95f1b9ba07"
+  # Lakebase project slug (deep-link tile). NB: slug is "birghtwave".
+  - name: LAKEBASE_PROJECT_ID
+    value: "birghtwave"
+  # Public app URL (self-referential deep links).
+  - name: APP_URL
+    value: "https://brightwave-7474656564440949.aws.databricksapps.com"
