@@ -13,7 +13,7 @@
     "build:server": "tsdown -c tsdown.server.config.ts",
     "build:client": "vite build --config client/vite.config.ts",
     "build:source": "npm run build:server && npm run build:client",
-    "build": "npm run build:source",
+    "build": "echo '[build] using prebuilt dist/ shipped via DAB sync.include (real build runs locally via scripts/build-app.sh -> build:source)'",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "start": "node dist/server.js"

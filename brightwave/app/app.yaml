@@ -1,7 +1,7 @@
 # Databricks App manifest — read by the runtime when the container starts.
 #
 # This is the TEMPLATE app.yaml. scripts/finalize_app.sh renders the deployed
-# app.yaml from it: keeps this header + command + scopes + binding-derived env,
+# app.yaml from it: keeps this header + command + binding-derived env,
 # and appends the plain-value env vars (DEMO_CATALOG, DASHBOARD_ID,
 # GENIE_SPACE_ID, …) harvested from the setup job's export_resources output.
 # Plain values live in exactly one place (finalize_app.sh), assembled after
@@ -13,20 +13,12 @@
 #   2. `npm run build` (no-op echo — real build runs locally via
 #      scripts/build-app.sh and dist/ ships via DAB sync.include).
 #   3. The `command:` below starts the server.
+#
+# OBO user API scopes are NOT declared here — app.yaml only supports
+# `command` + `env`. Scopes live on the App object in databricks.yml:
+#   resources.apps.brightwave.user_api_scopes
 
 command: ['node', '--env-file-if-exists=.env', 'dist/server.js']
-
-# Scopes minted into the user's OBO token (x-forwarded-access-token).
-user_authorization:
-  scopes:
-    - model-serving      # model-serving access for the agent loop
-    - genie              # ask_data → Genie space
-    - sql                # warehouse-backed analytics queries
-    - postgres           # Lakebase pool
-    - ai-gateway         # AI Gateway routing for the Responses API
-    - catalog.catalogs:read
-    - catalog.schemas:read
-    - catalog.tables:read
 
 env:
   - name: NODE_ENV
@@ -50,7 +42,8 @@ env:
   #   POST ${DATABRICKS_HOST}${AGENT_BASE_URL_PATH}/responses
   # with `model` = the three-part UC name below (verified working via curl).
   # Both resolve config/app.json's ${AGENT_MODEL} / ${AGENT_BASE_URL_PATH}
-  # placeholders. The `ai-gateway` OBO scope above authorizes the route.
+  # placeholders. The `ai-gateway` OBO scope (databricks.yml user_api_scopes)
+  # authorizes the route.
   - name: AGENT_MODEL
     value: "serverless_sandbox_kgi5wi_catalog.brightwave.brightwave-gpt-5-5"
   - name: AGENT_BASE_URL_PATH
