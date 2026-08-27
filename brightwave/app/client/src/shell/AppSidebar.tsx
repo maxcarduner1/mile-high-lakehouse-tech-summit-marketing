@@ -14,7 +14,7 @@ import {
   useSidebar,
 } from '@databricks/appkit-ui/react';
 import { Spinner } from '@databricks/appkit-ui/react';
-import { BarChart3, LayoutDashboard, MessagesSquare, Megaphone, Plus, Trash2 } from 'lucide-react';
+import { BarChart3, MessagesSquare, Megaphone, Plus, Trash2 } from 'lucide-react';
 import { useSession } from '@/lib/api';
 import { conversationStore, useConversationList } from '@/lib/conversations';
 
@@ -22,7 +22,6 @@ const navItems = [
   { to: '/', label: 'Assistant', icon: MessagesSquare, end: true },
   { to: '/operations', label: 'Campaign Desk', icon: Megaphone, end: false },
   { to: '/analytics', label: 'Analytics', icon: BarChart3, end: false },
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, end: false },
 ];
 
 export function AppSidebar() {
