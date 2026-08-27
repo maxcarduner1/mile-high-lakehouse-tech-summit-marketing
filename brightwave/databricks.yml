@@ -1,19 +1,21 @@
-# Databricks Asset Bundle — Workshop: Brightwave (Campaign Replication & Budget Rescue).
+# Databricks Asset Bundle — Brightwave (Campaign Replication & Budget Rescue).
 #
-# WORKSHOP TEMPLATE — this bundle does the MINIMUM so a trainee can start the
-# AI Customer Challenge: it stands up the schema + a raw-data Volume and a job
-# that generates the synthetic dataset. It deliberately does NOT build the
-# pipeline, metric view, model, dashboard, Lakebase, or the app — those are the
-# graded milestones the trainee builds (see README.md → "What YOU need to
-# create" and app/APP_WORKSHOP.md).
+# This bundle provisions the Brightwave workspace resources AND deploys the
+# Brightwave Campaign Desk app:
+#   • schema + a raw-data Volume,
+#   • the data-gen job (generates the synthetic raw_* parquet datasets),
+#   • the `brightwave` Databricks App (AppKit Node/TS, source in ./app) with its
+#     sql-warehouse binding + Lakebase `postgres` binding (development branch) +
+#     env (see the `apps.brightwave` block below). Command + OBO scopes live in
+#     app/app.yaml, which the container reads at boot.
 #
-#   1. `databricks bundle deploy`               → schema + raw_data volume + setup job
-#   2. `databricks bundle run brightwave_setup` → generates the synthetic raw data
-#   Then follow README.md: build Milestone 1 (Data) → 2 (Lakebase) → 3 (App) → 4 (AI Gateway).
+# The pipeline, metric view, ML model, dashboard, and Genie space are still the
+# trainee's graded milestones (see README.md + app/APP_WORKSHOP.md); this bundle
+# does not build those.
 #
-# The README + specifications/ + data_generation/ + app/ come with the forked
-# template folder; this bundle only provisions the workspace resources needed to
-# get data flowing. Deploy is documented in README.md — do NOT run it as part of authoring.
+# ⚠️ Deploying this bundle as-is CREATES a new app. To update the EXISTING
+#    `brightwave` app instead, `bundle deployment bind` it once first — see the
+#    Deploy runbook in DEPLOY.md. Do NOT run deploy/bind as part of authoring.
 bundle:
   name: workshop-brightwave
 
@@ -27,6 +29,23 @@ variables:
   schema:
     description: Schema for the demo tables + the raw_data volume (created by this bundle).
     default: brightwave
+
+  # ── App resource bindings ────────────────────────────────────────────────
+  # Template-safe empty defaults so this bundle still validates in any
+  # workspace; the concrete IDs are injected per-target (see targets.dev).
+  warehouse_id:
+    description: SQL warehouse the app's `sql-warehouse` resource binds to.
+    default: ""
+  lakebase_branch:
+    description: >-
+      Lakebase (Autoscaling) branch resource path the app's `postgres` binding
+      connects to, e.g. projects/<proj>/branches/<branch>.
+    default: ""
+  lakebase_database:
+    description: >-
+      Lakebase database resource path under that branch, e.g.
+      projects/<proj>/branches/<branch>/databases/<db>.
+    default: ""
 
 resources:
   schemas:
@@ -58,15 +77,64 @@ resources:
       environments:
         - environment_key: sdk_default
           spec:
-            client: "4"
+            client: "5"
             dependencies:
               - numpy
               - pandas
               - faker
 
+  # ── Databricks App: Brightwave Campaign Desk ───────────────────────────────
+  # Deploys the existing `brightwave` App (AppKit Node/TS, source in ./app) and
+  # wires its platform resource bindings. The app's runtime config —
+  # `command`, `user_authorization.scopes`, and env — lives in app/app.yaml
+  # (the source of truth the container reads at boot). We deliberately do NOT
+  # add a `config:` block here: the bundle's App `config` schema only exposes
+  # `command` + `env` (NOT `user_authorization.scopes`), and defining config in
+  # BOTH databricks.yml and the source app.yaml conflicts. So bindings live
+  # here; command/scopes/env stay in app/app.yaml.
+  #
+  # The two resource bindings below inject the standard env the AppKit
+  # ResourceRegistry expects: `sql-warehouse` → DATABRICKS_WAREHOUSE_ID;
+  # `postgres` → the PG* connection vars (PGHOST/PGDATABASE/PGUSER/PGPORT/
+  # PGSSLMODE) + LAKEBASE_ENDPOINT. app.yaml maps those via valueFrom.
+  #
+  # NOTE (per databricks-lakebase skill): use the `postgres` resource key
+  # (branch + database resource paths), NOT the retired `database` key. DABs
+  # `synced_database_tables` is deprecated and is NOT declared here — the
+  # Brightwave synced Gold tables are owned by the Build-1 owner (Angela) and
+  # the app's server/db/sync.ts mirrors Delta→Lakebase at boot.
+  apps:
+    brightwave:
+      name: brightwave
+      description: "Brightwave Campaign Desk — campaign-replication & budget-rescue action-taking app."
+      source_code_path: ./app
+      resources:
+        - name: sql-warehouse
+          description: "Warehouse-backed analytics (AppKit `analytics` plugin) + Delta→Lakebase sync via the SQL API."
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
+        - name: postgres
+          description: "Lakebase Postgres pool — the OLTP mirror + the app's writable campaign_actions_app table."
+          postgres:
+            branch: ${var.lakebase_branch}
+            database: ${var.lakebase_database}
+            permission: CAN_CONNECT_AND_CREATE
+
 targets:
   dev:
     mode: development
     default: true
+    # Concrete IDs for the fe-sandbox-serverless-sandbox-kgi5wi workspace.
+    # Kept at target level (not in the variable defaults) so the bundle stays
+    # a reusable template for other workspaces.
+    variables:
+      catalog: serverless_sandbox_kgi5wi_catalog
+      warehouse_id: 50792739f9da1305
+      # Bind the app to the DEVELOPMENT branch (production branch also exists:
+      # projects/birghtwave/branches/production — swap here for prod).
+      # NB: the project slug is "birghtwave" (as created in the workspace).
+      lakebase_branch: projects/birghtwave/branches/development
+      lakebase_database: projects/birghtwave/branches/development/databases/databricks-postgres
   prod:
     mode: production
