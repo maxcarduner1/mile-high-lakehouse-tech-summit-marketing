@@ -44,6 +44,16 @@ import * as mlflow from 'mlflow-tracing';
 import { z } from 'zod';
 import { authHeaders } from '../lib/auth.js';
 import type { AppDb } from '../db/index.js';
+// Ready-made Lakebase query helpers backing the Assist + Act tools below.
+import {
+  getCampaign,
+  getUnderperformer,
+  worstUnderperformer,
+  getRecommendation,
+  searchCreatives as searchCreativesQuery,
+  recordCampaignAction,
+  type ActionType,
+} from '../db/queries/campaigns.js';
 // The data-backend helpers. Both are config-driven and share the same
 // DataCallResult shape + ToolProgressEvent stream, so the `ask_data` tool
 // below can delegate to EITHER without the UI caring which powers it. This
@@ -140,11 +150,40 @@ function makeTools(ctx: AgentContext): Tool[] {
         .nullable()
         .describe('Campaign id, e.g. CMP-0000214. Null → return the worst underperformer.'),
     }),
-    execute: async () => {
-      throw new Error(
-        'Not implemented — this is your Build 2 Assist task; see APP_WORKSHOP.md',
-      );
-    },
+    execute: async ({ campaign_id }) =>
+      mlflow.withSpan(
+        async () => {
+          // Resolve the target underperformer: the requested campaign, else
+          // the worst by recoverable spend.
+          const under = campaign_id
+            ? await getUnderperformer(ctx.db, campaign_id)
+            : await worstUnderperformer(ctx.db);
+          if (!under) return { found: false };
+
+          // The live position row for ROAS / spend context.
+          const campaign = await getCampaign(ctx.db, under.campaignId);
+
+          return {
+            found: true,
+            campaign_id: under.campaignId,
+            channel: under.channel ?? campaign?.channel ?? null,
+            category: under.category ?? campaign?.category ?? null,
+            target_segment: under.targetSegment ?? campaign?.targetSegment ?? null,
+            roas: under.roas ?? campaign?.roas ?? null,
+            spend_to_date_usd: under.spendToDateUsd ?? campaign?.spendToDateUsd ?? null,
+            recoverable_spend_usd:
+              under.recoverableSpendUsd ?? campaign?.recoverableSpendUsd ?? null,
+            has_matching_winner: under.hasMatchingWinner ?? false,
+            matching_winner_campaign_id: under.matchingWinnerCampaignId ?? null,
+            matching_winner_roas: under.matchingWinnerRoas ?? null,
+          };
+        },
+        {
+          name: 'find_underperformer',
+          spanType: mlflow.SpanType.TOOL,
+          inputs: { campaign_id },
+        },
+      ),
   });
 
   // ── rank_actions — TRAINEE BUILDS (Build 2 · Assist). STUB. ────────────────
@@ -162,11 +201,24 @@ function makeTools(ctx: AgentContext): Tool[] {
         .string()
         .describe('Campaign id, e.g. CMP-0000214'),
     }),
-    execute: async () => {
-      throw new Error(
-        'Not implemented — this is your Build 2 Assist task; see APP_WORKSHOP.md',
-      );
-    },
+    execute: async ({ campaign_id }) =>
+      mlflow.withSpan(
+        async () => {
+          const rec = await getRecommendation(ctx.db, campaign_id);
+          if (!rec) {
+            return {
+              scored: false,
+              note: 'No action recommendation yet — build + score the roas_recommender model (Build 2 ML step), then reset the demo.',
+            };
+          }
+          return rec;
+        },
+        {
+          name: 'rank_actions',
+          spanType: mlflow.SpanType.TOOL,
+          inputs: { campaign_id },
+        },
+      ),
   });
 
   // ── search_creatives — TRAINEE BUILDS (Build 2 · Assist). STUB. ───────────
@@ -181,11 +233,31 @@ function makeTools(ctx: AgentContext): Tool[] {
         .string()
         .describe('Search query, e.g. "lifestyle" or "social media" or "video"'),
     }),
-    execute: async () => {
-      throw new Error(
-        'Not implemented — this is your Build 2 Assist task; see APP_WORKSHOP.md',
-      );
-    },
+    execute: async ({ query }) =>
+      mlflow.withSpan(
+        async () => {
+          const matches = await searchCreativesQuery(ctx.db, query);
+          if (matches.length === 0) return { found: false, query };
+          return {
+            found: true,
+            query,
+            count: matches.length,
+            creatives: matches.map((c) => ({
+              creative_id: c.creativeId,
+              creative_name: c.creativeName,
+              creative_type: c.creativeType,
+              angle: c.angle,
+              description: c.description,
+              is_active: c.isActive,
+            })),
+          };
+        },
+        {
+          name: 'search_creatives',
+          spanType: mlflow.SpanType.TOOL,
+          inputs: { query },
+        },
+      ),
   });
 
   // ── execute_campaign_action — TRAINEE BUILDS (Build 3 · Act). STUB. ───────
@@ -215,11 +287,37 @@ function makeTools(ctx: AgentContext): Tool[] {
         .nullable()
         .describe('Predicted ROAS lift from the model, if available'),
     }),
-    execute: async () => {
-      throw new Error(
-        'Not implemented — this is your Build 3 Act task; see APP_WORKSHOP.md',
-      );
-    },
+    execute: async ({
+      campaign_id,
+      action_type,
+      target_campaign_id,
+      drafted_brief,
+      predicted_roas_lift,
+    }) =>
+      mlflow.withSpan(
+        async () => {
+          const { actionId } = await recordCampaignAction(ctx.db, {
+            campaignId: campaign_id,
+            actionType: action_type as ActionType,
+            targetCampaignId: target_campaign_id,
+            draftedBrief: drafted_brief,
+            predictedRoasLift: predicted_roas_lift,
+            userEmail: ctx.userEmail,
+          });
+          return {
+            recorded: true,
+            action_id: actionId,
+            campaign_id,
+            action_type,
+            predicted_roas_lift,
+          };
+        },
+        {
+          name: 'execute_campaign_action',
+          spanType: mlflow.SpanType.TOOL,
+          inputs: { campaign_id, action_type, target_campaign_id },
+        },
+      ),
   });
 
   // find_underperformer / rank_actions / search_creatives / execute_campaign_action
