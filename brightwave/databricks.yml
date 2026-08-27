@@ -1,19 +1,21 @@
-# Databricks Asset Bundle — Workshop: Brightwave (Campaign Replication & Budget Rescue).
+# Databricks Asset Bundle — Brightwave (Campaign Replication & Budget Rescue).
 #
-# WORKSHOP TEMPLATE — this bundle does the MINIMUM so a trainee can start the
-# AI Customer Challenge: it stands up the schema + a raw-data Volume and a job
-# that generates the synthetic dataset. It deliberately does NOT build the
-# pipeline, metric view, model, dashboard, Lakebase, or the app — those are the
-# graded milestones the trainee builds (see README.md → "What YOU need to
-# create" and app/APP_WORKSHOP.md).
+# This bundle provisions the Brightwave workspace resources AND deploys the
+# Brightwave Campaign Desk app:
+#   • schema + a raw-data Volume,
+#   • the data-gen job (generates the synthetic raw_* parquet datasets),
+#   • the `brightwave` Databricks App (AppKit Node/TS, source in ./app) with its
+#     sql-warehouse binding + Lakebase `postgres` binding (development branch) +
+#     env (see the `apps.brightwave` block below). Command + OBO scopes live in
+#     app/app.yaml, which the container reads at boot.
 #
-#   1. `databricks bundle deploy`               → schema + raw_data volume + setup job
-#   2. `databricks bundle run brightwave_setup` → generates the synthetic raw data
-#   Then follow README.md: build Milestone 1 (Data) → 2 (Lakebase) → 3 (App) → 4 (AI Gateway).
+# The pipeline, metric view, ML model, dashboard, and Genie space are still the
+# trainee's graded milestones (see README.md + app/APP_WORKSHOP.md); this bundle
+# does not build those.
 #
-# The README + specifications/ + data_generation/ + app/ come with the forked
-# template folder; this bundle only provisions the workspace resources needed to
-# get data flowing. Deploy is documented in README.md — do NOT run it as part of authoring.
+# ⚠️ Deploying this bundle as-is CREATES a new app. To update the EXISTING
+#    `brightwave` app instead, `bundle deployment bind` it once first — see the
+#    Deploy runbook in DEPLOY.md. Do NOT run deploy/bind as part of authoring.
 bundle:
   name: workshop-brightwave
 
