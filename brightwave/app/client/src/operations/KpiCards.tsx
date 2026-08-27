@@ -1,42 +1,42 @@
 /**
- * Three KPI cards at the top of the Operations page: pending / approved /
- * escalated with counts + $ totals. Drives the "live update" demo moment —
- * click a decision and the numbers tick. When the agent's bulk write fires
- * `dataMutated`, each card's `count` is compared to the previous value and
- * only the cards that *moved* pulse a primary ring (see usePulseOnChange).
+ * Three KPI cards at the top of the Campaign Desk: winners / underperformers /
+ * recoverable spend. Drives the "live update" demo moment — when the agent's
+ * write fires `dataMutated` and a band count moves, only the cards that
+ * *changed* pulse a primary ring (see usePulseOnChange).
  */
-import { AlertTriangle, CheckCircle2, PackageOpen } from 'lucide-react';
+import { Trophy, TrendingDown, PiggyBank } from 'lucide-react';
 import { usePulseOnChange } from '@/lib/usePulseOnChange';
-import type { ReturnsSummary, ReturnStatus } from '@/shared/types';
+import type { CampaignDeskSummary } from '@/shared/types';
 
-export function KpiCards({ summary }: { summary: ReturnsSummary[] }) {
-  const byStatus = new Map<ReturnStatus, ReturnsSummary>();
-  for (const s of summary) byStatus.set(s.status, s);
-  const pending = byStatus.get('pending');
-  const approved = byStatus.get('approved');
-  const escalated = byStatus.get('escalated');
+export function KpiCards({ summary }: { summary: CampaignDeskSummary | null }) {
+  const byBand = new Map<string, { n: number; recoverableSpendUsd: number }>();
+  for (const b of summary?.bands ?? []) {
+    byBand.set(b.perfBand, { n: b.n, recoverableSpendUsd: b.recoverableSpendUsd });
+  }
+  const winners = byBand.get('winner')?.n ?? 0;
+  const underperformers = summary?.totalUnderperformers ?? 0;
+  const recoverable = summary?.totalRecoverableSpendUsd ?? 0;
   return (
     <div className="grid grid-cols-3 gap-2 sm:gap-4">
       <Card
-        label="Pending"
-        count={pending?.n ?? 0}
-        value={pending?.total_usd ?? '0'}
-        icon={<PackageOpen className="size-4" />}
-        tone="neutral"
-      />
-      <Card
-        label="Approved"
-        count={approved?.n ?? 0}
-        value={approved?.total_usd ?? '0'}
-        icon={<CheckCircle2 className="size-4" />}
+        label="Winners"
+        count={winners}
+        icon={<Trophy className="size-4" />}
         tone="success"
       />
       <Card
-        label="Escalated to QA"
-        count={escalated?.n ?? 0}
-        value={escalated?.total_usd ?? '0'}
-        icon={<AlertTriangle className="size-4" />}
+        label="Underperformers"
+        count={underperformers}
+        icon={<TrendingDown className="size-4" />}
         tone="danger"
+      />
+      <Card
+        label="Recoverable spend"
+        count={underperformers}
+        value={recoverable}
+        icon={<PiggyBank className="size-4" />}
+        tone="neutral"
+        showDollarOnly
       />
     </div>
   );
@@ -48,29 +48,28 @@ function Card({
   value,
   icon,
   tone,
+  showDollarOnly,
 }: {
   label: string;
   count: number;
-  value: string;
+  value?: number;
   icon: React.ReactNode;
   tone: 'neutral' | 'success' | 'danger';
+  showDollarOnly?: boolean;
 }) {
-  const pulse = usePulseOnChange(count);
+  // Pulse when the headline number moves (count, or $ for the recoverable card).
+  const pulse = usePulseOnChange(showDollarOnly ? (value ?? 0) : count);
   const toneClass =
     tone === 'success'
       ? 'text-[var(--success-subtle-foreground)]'
       : tone === 'danger'
         ? 'text-destructive'
         : 'text-foreground';
-  // On phone the $ value stacks BELOW the count (3 cards in a row at 375px
-  // can't fit both inline). On sm+ they sit on one baseline like before.
-  // Phone $ uses a "compact" abbreviation ($674.9K) to keep the line short.
-  const valueNum = Number(value);
   const compactDollar = new Intl.NumberFormat(undefined, {
     notation: 'compact',
     maximumFractionDigits: 1,
-  }).format(valueNum);
-  const fullDollar = valueNum.toLocaleString(undefined, {
+  }).format(value ?? 0);
+  const fullDollar = Number(value ?? 0).toLocaleString(undefined, {
     maximumFractionDigits: 0,
   });
   return (
@@ -84,13 +83,16 @@ function Card({
         <span className="truncate">{label}</span>
       </div>
       <div className="mt-1.5 sm:mt-2 flex flex-col sm:flex-row sm:items-baseline gap-0 sm:gap-2">
-        <div className="display text-2xl sm:text-3xl font-semibold text-foreground">
-          {count.toLocaleString()}
-        </div>
-        <div className="text-xs sm:text-sm text-muted-foreground">
-          <span className="sm:hidden">${compactDollar}</span>
-          <span className="hidden sm:inline">· ${fullDollar}</span>
-        </div>
+        {showDollarOnly ? (
+          <div className="display text-2xl sm:text-3xl font-semibold text-foreground">
+            <span className="sm:hidden">${compactDollar}</span>
+            <span className="hidden sm:inline">${fullDollar}</span>
+          </div>
+        ) : (
+          <div className="display text-2xl sm:text-3xl font-semibold text-foreground">
+            {count.toLocaleString()}
+          </div>
+        )}
       </div>
     </div>
   );

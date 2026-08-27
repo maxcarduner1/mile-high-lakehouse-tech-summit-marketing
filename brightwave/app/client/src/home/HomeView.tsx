@@ -13,24 +13,19 @@
  * either navigates somewhere, opens the dock, or opens the dock and
  * auto-sends a scripted prompt. That's the "see the demo in action" path.
  */
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment } from 'react';
 import { useNavigate } from 'react-router';
 import {
   AlertTriangle,
   ArrowRight,
   Brain,
-  CheckCircle2,
   Eye,
-  Mail,
   MessageCircleQuestion,
   Sparkles,
   Wrench,
   Zap,
 } from 'lucide-react';
 import { useSession, type ScriptStep } from '@/lib/api';
-import { fetchActivity } from '@/lib/returns';
-import type { ActivityEvent } from '@/shared/types';
-import { dataMutated } from '@/lib/events';
 import { dockController } from '@/chat/dockController';
 import { AgentLoopFlow } from '@/architecture/AgentLoopFlow';
 
@@ -66,19 +61,6 @@ const FEATURED_ACTION_PROMPT =
 
 export function HomeView() {
   const { config, configError, retry: retrySession } = useSession();
-  const [activity, setActivity] = useState<ActivityEvent[]>([]);
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    // Activity feed errors are non-fatal (feed silently empty). Logged for
-    // dev debugging; the page still renders the story without it.
-    const reload = () =>
-      fetchActivity(20).then(setActivity).catch((e) => {
-        console.error('[home] activity feed failed', e);
-      });
-    void reload();
-    return dataMutated.subscribe(reload);
-  }, []);
 
   if (configError) {
     return (
@@ -207,19 +189,6 @@ export function HomeView() {
             </div>
           </div>
         </section>
-
-        {/* Proof — activity feed */}
-        {activity.length > 0 && (
-          <section className="space-y-4">
-            <div className="hidden sm:block text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Recent activity
-            </div>
-            <ActivityFeed
-              events={activity}
-              onJumpToReturn={(id) => navigate(`/operations?return=${id}`)}
-            />
-          </section>
-        )}
       </div>
     </div>
   );
@@ -399,104 +368,4 @@ function StepText({ step, compact = false }: { step: JourneyStep; compact?: bool
       </div>
     </>
   );
-}
-
-// --- Activity feed ---------------------------------------------------------
-
-function ActivityFeed({
-  events,
-  onJumpToReturn,
-}: {
-  events: ActivityEvent[];
-  onJumpToReturn: (returnId: string) => void;
-}) {
-  return (
-    <ul className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
-      {events.map((e, i) => (
-        <li
-          key={i}
-          className="px-4 py-3 flex items-start gap-3 text-sm"
-        >
-          <ActivityIcon kind={e.kind} />
-          <div className="flex-1 min-w-0">
-            <ActivityBody event={e} onJumpToReturn={onJumpToReturn} />
-          </div>
-          <div className="text-xs text-muted-foreground shrink-0">
-            {relativeTime(e.at)}
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function ActivityIcon({ kind }: { kind: ActivityEvent['kind'] }) {
-  const Icon = kind === 'email' ? Mail : CheckCircle2;
-  const bg =
-    kind === 'email'
-      ? 'bg-[var(--info-subtle)] text-[var(--info-subtle-foreground)]'
-      : 'bg-[var(--success-subtle)] text-[var(--success-subtle-foreground)]';
-  return (
-    <div
-      className={`size-7 rounded-full flex items-center justify-center shrink-0 ${bg}`}
-    >
-      <Icon className="size-3.5" />
-    </div>
-  );
-}
-
-function ActivityBody({
-  event,
-  onJumpToReturn,
-}: {
-  event: ActivityEvent;
-  onJumpToReturn: (returnId: string) => void;
-}) {
-  if (event.kind === 'email') {
-    return (
-      <>
-        <div className="text-foreground truncate">
-          <span className="font-medium">Email</span> to{' '}
-          <span className="text-muted-foreground">{event.to ?? '—'}</span>:{' '}
-          <span className="text-muted-foreground">"{event.subject}"</span>
-        </div>
-        <button
-          onClick={() => onJumpToReturn(event.return_id)}
-          className="mt-0.5 text-xs text-muted-foreground hover:text-foreground"
-        >
-          View return →
-        </button>
-      </>
-    );
-  }
-  return (
-    <>
-      <div className="text-foreground">
-        <span className="font-medium capitalize">{event.action}</span>
-        {event.notes && (
-          <span className="text-muted-foreground"> · {event.notes}</span>
-        )}
-        <span className="text-xs text-muted-foreground ml-2">by {event.by}</span>
-      </div>
-      <button
-        onClick={() => onJumpToReturn(event.return_id)}
-        className="mt-0.5 text-xs text-muted-foreground hover:text-foreground"
-      >
-        View return →
-      </button>
-    </>
-  );
-}
-
-function relativeTime(iso: string): string {
-  const d = new Date(iso).getTime();
-  const now = Date.now();
-  const sec = Math.max(1, Math.round((now - d) / 1000));
-  if (sec < 60) return `${sec}s ago`;
-  const min = Math.round(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.round(hr / 24);
-  return `${day}d ago`;
 }

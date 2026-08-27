@@ -84,6 +84,114 @@ export async function worstUnderperformer(
 }
 
 /**
+ * The ranked underperformer queue the Campaign Desk UI renders — every
+ * campaign in the `underperformer` band, biggest recoverable spend first,
+ * LEFT JOINed to its matching-winner info + latest recorded action so the UI
+ * can flag "has a winner to replicate" and "action taken". Reads ONLY the
+ * synced mirror + the app's own writable action table (never mutates them).
+ */
+export type RankedUnderperformer = {
+  campaignId: string;
+  campaignName: string | null;
+  channel: string | null;
+  category: string | null;
+  roas: number | null;
+  spendToDateUsd: number | null;
+  attributedRevenueUsd: number | null;
+  recoverableSpendUsd: number | null;
+  perfSignal: string | null;
+  hasMatchingWinner: boolean;
+  matchingWinnerCampaignId: string | null;
+  /** The action_type of the most recent recorded action, or null if none. */
+  latestActionType: ActionType | null;
+  latestActionStatus: string | null;
+};
+
+export async function rankedUnderperformers(
+  db: AppDb,
+  limit = 100,
+): Promise<RankedUnderperformer[]> {
+  // Latest recorded action per campaign (the writable table can hold several
+  // rows over a demo; DISTINCT ON grabs the newest by created_at).
+  const latestAction = db
+    .selectDistinctOn([campaignActions.campaignId], {
+      campaignId: campaignActions.campaignId,
+      actionType: campaignActions.actionType,
+      status: campaignActions.status,
+    })
+    .from(campaignActions)
+    .orderBy(campaignActions.campaignId, desc(campaignActions.createdAt))
+    .as('latest_action');
+
+  const rows = await db
+    .select({
+      campaignId: campaignPosition.campaignId,
+      campaignName: campaignPosition.campaignName,
+      channel: campaignPosition.channel,
+      category: campaignPosition.category,
+      roas: campaignPosition.roas,
+      spendToDateUsd: campaignPosition.spendToDateUsd,
+      attributedRevenueUsd: campaignPosition.attributedRevenueUsd,
+      recoverableSpendUsd: campaignPosition.recoverableSpendUsd,
+      perfSignal: campaignPosition.perfSignal,
+      hasMatchingWinner: openUnderperformers.hasMatchingWinner,
+      matchingWinnerCampaignId: openUnderperformers.matchingWinnerCampaignId,
+      latestActionType: latestAction.actionType,
+      latestActionStatus: latestAction.status,
+    })
+    .from(campaignPosition)
+    .leftJoin(
+      openUnderperformers,
+      eq(campaignPosition.campaignId, openUnderperformers.campaignId),
+    )
+    .leftJoin(latestAction, eq(campaignPosition.campaignId, latestAction.campaignId))
+    .where(eq(campaignPosition.perfBand, 'underperformer'))
+    .orderBy(desc(campaignPosition.recoverableSpendUsd))
+    .limit(limit);
+
+  return rows.map((r) => ({
+    ...r,
+    hasMatchingWinner: r.hasMatchingWinner ?? false,
+  }));
+}
+
+/**
+ * Headline numbers for the Campaign Desk KPI row: how many campaigns are in
+ * each performance band + the total recoverable spend locked in
+ * underperformers. One grouped scan of the synced position mirror.
+ */
+export type CampaignDeskSummary = {
+  bands: { perfBand: string; n: number; recoverableSpendUsd: number }[];
+  totalUnderperformers: number;
+  totalRecoverableSpendUsd: number;
+};
+
+export async function campaignDeskSummary(
+  db: AppDb,
+): Promise<CampaignDeskSummary> {
+  const rows = await db
+    .select({
+      perfBand: campaignPosition.perfBand,
+      n: sql<number>`COUNT(*)::int`,
+      recoverableSpendUsd: sql<number>`COALESCE(SUM(${campaignPosition.recoverableSpendUsd}), 0)::float8`,
+    })
+    .from(campaignPosition)
+    .groupBy(campaignPosition.perfBand);
+
+  const bands = rows.map((r) => ({
+    perfBand: r.perfBand ?? 'steady',
+    n: Number(r.n),
+    recoverableSpendUsd: Number(r.recoverableSpendUsd),
+  }));
+  const under = bands.find((b) => b.perfBand === 'underperformer');
+  return {
+    bands,
+    totalUnderperformers: under?.n ?? 0,
+    totalRecoverableSpendUsd: under?.recoverableSpendUsd ?? 0,
+  };
+}
+
+/**
  * The ML model's ranked action recommendation for {campaignId} — reads the
  * synced mirror of gold_action_recommendations. Returns null when the model
  * hasn't been scored yet (the mirror is empty until the Build-2 ML step).

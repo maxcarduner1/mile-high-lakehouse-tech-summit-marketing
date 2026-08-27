@@ -1,39 +1,31 @@
 /**
- * Analytics — warehouse-backed charts.
+ * Analytics — warehouse-backed charts for the Brightwave Campaign Desk.
  *
  * Template intent: surfaces the "lakehouse analytics" half of the story —
- * live SQL-warehouse queries against the Delta lakehouse (not a mock). The
- * header shows the warehouse name + state to make that obvious.
+ * live SQL-warehouse queries against the Brightwave Gold Delta tables (not a
+ * mock). The header shows the warehouse name + state to make that obvious.
  *
  * How the data flows: each chart fetches `/api/charts/<key>` (see
  * server/routes/charts.ts). That route reads config/queries/<key>.sql —
- * written SCHEMA-RELATIVE (`FROM silver_returns`, no catalog/schema
- * qualifier) — and runs it with the demo's catalog+schema as the SQL
- * session context, so one env var (DEMO_CATALOG/DEMO_SCHEMA) drives the
- * analytics tables on any workspace. Rows come back via `useChartData` and
- * feed the chart components' `data` prop.
- *
- * NOTE: we deliberately do NOT use AppKit's `useAnalyticsQuery` /
- * `<Chart queryKey=…>` plugin path — its query route can't set the
- * statement catalog/schema, so it would force hardcoded `cat.schema.table`
- * in every SQL file (breaks across workspaces). The custom route is the fix.
+ * which references its tables via `IDENTIFIER(:catalog || '.' || :schema
+ * || '.table')` — binds the demo's catalog+schema, and runs it against the
+ * SQL warehouse. Rows come back via `useChartData` and feed the chart
+ * components' `data` prop.
  *
  * Repurposing: edit/add a .sql under config/queries/, register its key in
  * charts.ts's QUERY_FILES map, and reference it here via <ChartData chartKey=…>.
  */
 import { useEffect, useState } from 'react';
-import { BarChart, LineChart } from '@databricks/appkit-ui/react';
+import { BarChart } from '@databricks/appkit-ui/react';
 import { fetchWarehouse, type Warehouse } from '@/lib/api';
 import { BRAND_PALETTE } from '@/lib/brand';
-import { FacilityPanel } from './FacilityPanel';
 import { RtPitch } from '@/architecture/RtPitch';
 
 /**
  * Fetch chart rows from the server's /api/charts/<key> route. That route
  * reads the query SQL, substitutes the demo catalog/schema, and runs it
- * against the SQL warehouse — so a single env var drives the catalog/schema
- * for analytics just like the rest of the app (see server/routes/charts.ts).
- * We pass the returned rows to the chart components via their `data` prop.
+ * against the SQL warehouse (see server/routes/charts.ts). We pass the
+ * returned rows to the chart components via their `data` prop.
  */
 function useChartData<T = Record<string, unknown>>(key: string): {
   data: T[] | null;
@@ -81,15 +73,15 @@ export function AnalyticsView() {
       <div className="max-w-6xl mx-auto px-4 sm:px-8 py-6 sm:py-10 space-y-6 sm:space-y-10">
         <div>
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground mb-2">
-            Operations analytics
+            Campaign analytics
           </div>
           <h1 className="display text-4xl font-semibold tracking-tight text-foreground mb-2">
-            Where the returns are coming from.
+            Where the budget is leaking.
           </h1>
           <p className="text-muted-foreground max-w-2xl">
             Live queries against the SQL warehouse — the same numbers the
-            assistant reasons about, on a single page. Use the queue to take
-            action; use this page to spot patterns.
+            assistant reasons about, on a single page. Use the Campaign Desk to
+            take action; use this page to spot patterns.
           </p>
         </div>
 
@@ -102,39 +94,30 @@ export function AnalyticsView() {
           latencyMs={null}
         />
 
-        {/* Top row: two charts side-by-side. Trend (wider) + product mix. */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-          <ChartCard
-            title="Daily refund value"
-            scope="Last 30 days"
-            className="lg:col-span-3"
-          >
-            <ChartData chartKey="daily_refund_trend" height={260}>
+        {/* Top row: efficiency by channel + wasted budget by category. */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <ChartCard title="Avg ROAS by channel" scope="All campaigns">
+            <ChartData chartKey="roas_by_channel" height={260}>
               {(rows) => (
-                <LineChart
+                <BarChart
                   data={rows}
-                  xKey="return_date"
-                  yKey="total_refund_usd"
+                  xKey="channel"
+                  yKey="avg_roas"
                   colors={[BRAND_PALETTE[0]]}
                   height={260}
-                  smooth
                 />
               )}
             </ChartData>
           </ChartCard>
 
-          <ChartCard
-            title="Top products by returns"
-            scope="All time"
-            className="lg:col-span-2"
-          >
-            <ChartData chartKey="returns_by_product" height={260}>
+          <ChartCard title="Recoverable spend by category" scope="Underperformers">
+            <ChartData chartKey="recoverable_by_category" height={260}>
               {(rows) => (
                 <BarChart
                   data={rows}
-                  xKey="product_name"
-                  yKey="return_count"
-                  colors={[BRAND_PALETTE[0]]}
+                  xKey="category"
+                  yKey="recoverable_spend_usd"
+                  colors={[BRAND_PALETTE[4]]}
                   height={260}
                 />
               )}
@@ -142,19 +125,12 @@ export function AnalyticsView() {
           </ChartCard>
         </div>
 
-        <FacilityPanel />
-
-        <ChartCard title="Worst production lots" scope="By return rate" flush>
-          {/* Desktop / tablet: compact custom table — appkit's DataTable
-              auto-mode gives wide auto-sized columns; we want a denser
-              layout where Region + Returns + Rate + Refund fit without
-              overflow. Phone-only card list lives in WorstLotsMobile. */}
-          <div className="hidden sm:block">
-            <WorstLotsTable />
-          </div>
-          <div className="sm:hidden">
-            <WorstLotsMobile />
-          </div>
+        <ChartCard
+          title="Top underperformers"
+          scope="By recoverable spend"
+          flush
+        >
+          <TopUnderperformersTable />
         </ChartCard>
       </div>
     </div>
@@ -163,9 +139,8 @@ export function AnalyticsView() {
 
 /**
  * Wraps a chart/table in a bordered card with a compact header (title +
- * scope chip). Cuts the wall-of-H2-text the page used to have and gives
- * every analytics block a consistent frame. `flush` removes inner padding
- * for components that draw their own (e.g. DataTable).
+ * scope chip). `flush` removes inner padding for components that draw their
+ * own (e.g. a dense table).
  */
 function ChartCard({
   title,
@@ -238,156 +213,125 @@ function ChartData({
 }
 
 /**
- * worst_lots — phone card list + desktop dense table.
- *
- * Both renderers share the query (one fetch), the row shape, the
- * severity thresholds, and the loading/error/empty states. The only
- * thing that varies between desktop and mobile is the row layout.
+ * top_underperformers — dense table of the worst campaigns by recoverable
+ * spend, joined to their matching-winner flag. The hero campaign
+ * (CMP-0000214) is highlighted so the important row is obvious.
  */
-type WorstLotRow = {
-  lot_id: string;
-  product_name: string | null;
-  facility: string | null;
-  region: string | null;
-  return_count: number;
-  units_sold: number;
-  return_rate_pct: number;
-  total_refund_usd: number;
+type UnderperformerChartRow = {
+  campaign_id: string;
+  campaign_name: string | null;
+  channel: string | null;
+  category: string | null;
+  roas: number;
+  spend_to_date_usd: number;
+  attributed_revenue_usd: number;
+  recoverable_spend_usd: number;
+  has_matching_winner: boolean;
+  matching_winner_campaign_id: string | null;
 };
 
-/** Color the rate by severity. Uses --severity-* tokens so a re-theme
- *  picks them up; thresholds are hardcoded business logic. */
-function rateToneClass(pct: number): string {
-  if (pct >= 20) return 'text-[var(--severity-danger)]';
-  if (pct >= 10) return 'text-[var(--severity-warning)]';
-  return 'text-foreground';
-}
+const HERO_CAMPAIGN_ID = 'CMP-0000214';
 
 const compactUsd = (n: number) =>
   '$' + Number(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
 
-/** Shared fetch + state-handling. Returns either ready data or a
- *  fallback ReactNode to render in the empty / loading / error cases. */
-function useWorstLots(): { data: WorstLotRow[] } | { fallback: React.ReactNode } {
-  const { data, error, isLoading } = useChartData<WorstLotRow>('worst_lots');
+function roasToneClass(roas: number): string {
+  if (roas < 1) return 'text-[var(--severity-danger)]';
+  if (roas < 1.5) return 'text-[var(--severity-warning)]';
+  return 'text-foreground';
+}
+
+function TopUnderperformersTable() {
+  const { data, error, isLoading } =
+    useChartData<UnderperformerChartRow>('top_underperformers');
+
   if (error) {
-    return {
-      fallback: (
-        <div className="px-4 py-3 text-sm text-destructive">
-          Couldn't load lots: {error}
-        </div>
-      ),
-    };
+    return (
+      <div className="px-4 py-3 text-sm text-destructive">
+        Couldn&apos;t load campaigns: {error}
+      </div>
+    );
   }
   if (isLoading || !data) {
-    return {
-      fallback: (
-        <div className="px-4 py-6 text-sm text-muted-foreground text-center">
-          Loading…
-        </div>
-      ),
-    };
+    return (
+      <div className="px-4 py-6 text-sm text-muted-foreground text-center">
+        Loading…
+      </div>
+    );
   }
   if (data.length === 0) {
-    return {
-      fallback: (
-        <div className="px-4 py-6 text-sm text-muted-foreground text-center">
-          No lots returned data.
-        </div>
-      ),
-    };
+    return (
+      <div className="px-4 py-6 text-sm text-muted-foreground text-center">
+        No underperforming campaigns.
+      </div>
+    );
   }
-  return { data };
-}
-
-function WorstLotsMobile() {
-  const r = useWorstLots();
-  if ('fallback' in r) return r.fallback;
-  return (
-    <ul className="divide-y divide-border">
-      {r.data.map((row) => (
-        <li key={row.lot_id} className="px-4 py-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="font-mono text-xs text-muted-foreground">
-                {row.lot_id}
-              </div>
-              <div className="text-sm font-medium truncate mt-0.5">
-                {row.product_name ?? '—'}
-              </div>
-              <div className="text-xs text-muted-foreground mt-0.5">
-                {[row.facility, row.region].filter(Boolean).join(' · ') || '—'}
-              </div>
-            </div>
-            <div className="shrink-0 text-right">
-              <div
-                className={`display text-xl font-semibold ${rateToneClass(row.return_rate_pct)}`}
-              >
-                {row.return_rate_pct}%
-              </div>
-              <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                return rate
-              </div>
-            </div>
-          </div>
-          <div className="mt-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-            <span>
-              {row.return_count.toLocaleString()} returned ·{' '}
-              {row.units_sold.toLocaleString()} sold
-            </span>
-            <span className="font-mono text-foreground">
-              {compactUsd(row.total_refund_usd)}
-            </span>
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function WorstLotsTable() {
-  const r = useWorstLots();
-  if ('fallback' in r) return r.fallback;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm tabular-nums">
         <thead className="text-[11px] uppercase tracking-[0.1em] text-muted-foreground">
           <tr className="border-b border-border">
-            <th className="text-left font-medium px-3 py-2">Lot</th>
-            <th className="text-left font-medium px-3 py-2">Product</th>
-            <th className="text-left font-medium px-3 py-2">Facility</th>
-            <th className="text-left font-medium px-3 py-2">Region</th>
-            <th className="text-right font-medium px-3 py-2">Returns</th>
-            <th className="text-right font-medium px-3 py-2">Rate</th>
-            <th className="text-right font-medium px-3 py-2">Refund</th>
+            <th className="text-left font-medium px-3 py-2">Campaign</th>
+            <th className="text-left font-medium px-3 py-2">Channel</th>
+            <th className="text-left font-medium px-3 py-2">Category</th>
+            <th className="text-right font-medium px-3 py-2">ROAS</th>
+            <th className="text-right font-medium px-3 py-2">Recoverable</th>
+            <th className="text-left font-medium px-3 py-2">Winner?</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {r.data.map((row) => (
-            <tr key={row.lot_id} className="hover:bg-muted/40">
-              <td className="px-3 py-2 font-mono text-xs">{row.lot_id}</td>
-              <td className="px-3 py-2 truncate max-w-[14rem]">
-                {row.product_name ?? '—'}
-              </td>
-              <td className="px-3 py-2 text-muted-foreground">
-                {row.facility ?? '—'}
-              </td>
-              <td className="px-3 py-2 text-muted-foreground">
-                {row.region ?? '—'}
-              </td>
-              <td className="px-3 py-2 text-right">
-                {row.return_count.toLocaleString()}
-              </td>
-              <td
-                className={`px-3 py-2 text-right font-semibold ${rateToneClass(row.return_rate_pct)}`}
+          {data.map((row) => {
+            const isHero = row.campaign_id === HERO_CAMPAIGN_ID;
+            return (
+              <tr
+                key={row.campaign_id}
+                className={`hover:bg-muted/40 ${
+                  isHero
+                    ? 'bg-[var(--primary)]/5 ring-1 ring-inset ring-[var(--primary)]/40'
+                    : ''
+                }`}
               >
-                {row.return_rate_pct}%
-              </td>
-              <td className="px-3 py-2 text-right font-mono">
-                {compactUsd(row.total_refund_usd)}
-              </td>
-            </tr>
-          ))}
+                <td className="px-3 py-2">
+                  <div className="font-mono text-xs text-muted-foreground">
+                    {row.campaign_id}
+                    {isHero && (
+                      <span
+                        className="ml-1.5 inline-block rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
+                        style={{
+                          background: 'var(--primary)',
+                          color: 'var(--primary-foreground)',
+                        }}
+                      >
+                        Hero
+                      </span>
+                    )}
+                  </div>
+                  <div className="font-medium truncate max-w-[14rem]">
+                    {row.campaign_name ?? '—'}
+                  </div>
+                </td>
+                <td className="px-3 py-2 text-muted-foreground capitalize">
+                  {row.channel ?? '—'}
+                </td>
+                <td className="px-3 py-2 text-muted-foreground capitalize">
+                  {row.category ?? '—'}
+                </td>
+                <td
+                  className={`px-3 py-2 text-right font-semibold ${roasToneClass(row.roas)}`}
+                >
+                  {row.roas.toFixed(2)}
+                </td>
+                <td className="px-3 py-2 text-right font-mono font-semibold">
+                  {compactUsd(row.recoverable_spend_usd)}
+                </td>
+                <td className="px-3 py-2 text-xs text-muted-foreground">
+                  {row.has_matching_winner
+                    ? (row.matching_winner_campaign_id ?? 'yes')
+                    : '—'}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
