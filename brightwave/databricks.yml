@@ -95,6 +95,58 @@ resources:
               - pandas
               - faker
 
+    # ── The DEFINED TRIGGER (Build-2 Layer-1) ─────────────────────────────────
+    # A scheduled serverless job that fires on its own (system update, not a
+    # person opening the view) and leaves a timestamped `trigger` row in the
+    # Lakebase workflow-state / observability table (`app.workflow_state`).
+    # Together with the `decision` rows the app writes when a user commits an
+    # action, this is the source for the `state_table.json` evidence artifact.
+    #
+    # Cadence: every 15 minutes (quartz cron). The task refreshes the ranked
+    # view's Gold source (reads current row counts) and INSERTs the trigger row
+    # into Lakebase directly (OAuth cred + psycopg2) — see the notebook header
+    # for why we do NOT reuse the app's destructive /api/admin/reset endpoint.
+    #
+    # NB on pausing: DAB `mode: development` (targets.dev) auto-PAUSES all
+    # schedules on deploy so dev deploys don't fire background jobs unexpectedly
+    # — and it explicitly REFUSES a `presets.trigger_pause_status: UNPAUSED`
+    # override. So after `bundle deploy -t dev`, unpause this one job for the
+    # demo with:
+    #   databricks jobs list --profile kgi5wi | grep 'scheduled refresh'   # get <job-id>
+    #   databricks jobs update <job-id> --json '{"new_settings":{"schedule":{"quartz_cron_expression":"0 0/15 * * * ?","timezone_id":"UTC","pause_status":"UNPAUSED"}}}' --profile kgi5wi
+    # (Deploying to `prod` — mode: production — honors the UNPAUSED below as-is.)
+    brightwave_refresh:
+      name: "[Workshop] Brightwave — scheduled refresh (defined trigger)"
+      description: "The Build-2 defined trigger: fires every 15 min, refreshes the ranked view source, and writes a timestamped trigger row into app.workflow_state (Lakebase)."
+      # Run as the app service principal so it owns/can-write app.workflow_state
+      # without an extra grant. Left commented for the template (no SP id here);
+      # the orchestrator sets this at deploy, or grants INSERT to the job's
+      # identity (see notebook footer).
+      # run_as:
+      #   service_principal_name: <app-sp-application-id>
+      schedule:
+        # Every 15 minutes, on the quarter hour, UTC.
+        quartz_cron_expression: "0 0/15 * * * ?"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: refresh_workflow_state
+          notebook_task:
+            notebook_path: ./resources/refresh_job/refresh_workflow_state.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${resources.schemas.demo_schema.name}
+              lakebase_endpoint: ${var.lakebase_branch}/endpoints/primary
+              pg_database: databricks_postgres
+          environment_key: refresh_env
+      environments:
+        - environment_key: refresh_env
+          spec:
+            client: "5"
+            dependencies:
+              - databricks-sdk
+              - psycopg2-binary
+
   # ── Databricks App: Brightwave Campaign Desk ───────────────────────────────
   # Deploys the existing `brightwave` App (AppKit Node/TS, source in ./app) and
   # wires its platform resource bindings + OBO user API scopes.

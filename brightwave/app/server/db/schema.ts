@@ -271,6 +271,52 @@ export const campaignActions = appSchema.table(
 );
 
 // ============================================================================
+// Workflow-state & observability table (the DEFINED-TRIGGER audit log)
+//
+// `workflow_state` is the Build-2 Layer-1 observability surface: an append-only
+// log of what drives the Campaign Desk. Two event kinds land here:
+//   • 'trigger'  — a SYSTEM/SCHEDULE event (the `brightwave_refresh` DAB job
+//                  firing on its cron). This is the "defined trigger" — a
+//                  scheduled system update, not a person opening the view.
+//                  Rows carry row counts + a timestamp in `detail`.
+//   • 'decision' — a RECORDED DECISION (a user approving/committing a campaign
+//                  action). Written by recordCampaignAction() alongside the
+//                  campaign_actions_app insert, in the same transaction.
+//
+// Together the rows give a timestamped trail of trigger events + recorded
+// decisions — exported as evidence artifact `state_table.json`. This is a
+// WRITABLE app-owned table (like campaign_actions_app), never a synced mirror.
+// ============================================================================
+
+export const workflowState = appSchema.table(
+  'workflow_state',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // 'trigger' (system/schedule fired) | 'decision' (user committed an action).
+    eventType: text('event_type', { enum: ['trigger', 'decision'] }).notNull(),
+    // What drove the event: a cron 'schedule', a 'system' update, or a 'user'.
+    triggerSource: text('trigger_source', {
+      enum: ['schedule', 'system', 'user'],
+    }),
+    // The campaign the event concerns (null for whole-desk trigger sweeps).
+    campaignId: text('campaign_id'),
+    // Short status label (e.g. the action status for decisions, 'ok' for triggers).
+    status: text('status'),
+    // Free-form payload: for triggers → { at, rowCounts, source };
+    // for decisions → the recorded action (type, target, predicted lift, …).
+    detail: jsonb('detail').$type<Record<string, unknown>>(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // Newest-first scans for the observability view + state_table.json export.
+    index('workflow_state_created_idx').on(t.createdAt),
+    index('workflow_state_type_idx').on(t.eventType, t.createdAt),
+  ],
+);
+
+// ============================================================================
 // JSONB entry shapes
 // ============================================================================
 

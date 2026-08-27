@@ -20,6 +20,7 @@ import {
   actionRecommendations,
   creatives,
   campaignActions,
+  workflowState,
   type ActionOption,
   type AuditEntry,
 } from '../schema.js';
@@ -254,6 +255,11 @@ export async function searchCreatives(
  * write the app makes (the synced mirrors are read-only). Runs in a
  * transaction; stamps the approving user + an append-only audit entry, and
  * returns the generated action id. See APP_WORKSHOP §Layer 3a.
+ *
+ * In the SAME transaction it also records a 'decision' event in
+ * app.workflow_state (the Build-2 Layer-1 observability log) so every committed
+ * decision is observable next to the scheduled 'trigger' events. Both writes go
+ * to app-owned writable tables; the synced mirrors are never touched.
  */
 export async function recordCampaignAction(
   db: AppDb,
@@ -292,6 +298,24 @@ export async function recordCampaignAction(
         decidedAt: now,
       })
       .returning({ id: campaignActions.id });
+
+    // Observability: mirror the committed decision into the workflow-state log
+    // so it shows up alongside scheduled trigger events in state_table.json.
+    await tx.insert(workflowState).values({
+      eventType: 'decision',
+      triggerSource: 'user',
+      campaignId: args.campaignId,
+      status: 'approved',
+      detail: {
+        actionId: rows[0].id,
+        actionType: args.actionType,
+        targetCampaignId: args.targetCampaignId,
+        predictedRoasLift: args.predictedRoasLift,
+        by: args.userEmail,
+        at: now.toISOString(),
+      },
+    });
+
     return { actionId: rows[0].id };
   });
 }
