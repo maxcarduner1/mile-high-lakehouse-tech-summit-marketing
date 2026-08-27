@@ -17,6 +17,9 @@ type ChatConfig = {
    * there into the AgentContext. */
   genieSpaceId: string;
   agentModel?: string;
+  /** Base path appended to DATABRICKS_HOST for the agent's Responses client.
+   * Defaults to the AI Gateway (`/ai-gateway/mlflow/v1`) in campaigndesk.ts. */
+  agentBaseUrlPath?: string;
 };
 
 /**
@@ -183,12 +186,14 @@ export async function handleChatStream(args: {
       masEndpointName: config.masEndpointName,
       genieSpaceId: config.genieSpaceId,
       databricksHost: host,
-      // Foundation Model endpoint name. Needs the OpenAI Responses API
-      // (campaigndesk.ts `setOpenAIAPI('responses')`). `databricks-gpt-5-4` is the
-      // baseline default; a newer GPT endpoint with `openai/v1/responses` enabled
-      // works too. Claude/non-Responses models 400 BAD_REQUEST on that route. Use
-      // the EXACT endpoint name from Serving → Foundation Models; never abbreviate.
-      model: config.agentModel ?? 'databricks-gpt-5-4',
+      // Agent model + gateway base path. The agent hits the Unity AI Gateway
+      // Responses route: POST `${host}${agentBaseUrlPath}/responses` with
+      // `model` = the three-part UC name. Both come from config/app.json
+      // (env-driven: AGENT_MODEL / AGENT_BASE_URL_PATH). Defaults below match
+      // the verified gateway wiring so the app works even with neither env set.
+      // Claude/non-Responses models 400 BAD_REQUEST on that route.
+      model: config.agentModel ?? 'serverless_sandbox_kgi5wi_catalog.brightwave.brightwave-gpt-5-5',
+      agentBaseUrlPath: config.agentBaseUrlPath ?? '/ai-gateway/mlflow/v1',
       messages: cleanMessages,
       signal: turnAbort.signal,
     });

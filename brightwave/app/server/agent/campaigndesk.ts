@@ -27,9 +27,14 @@
  * the stubbed tools, which is the point: the trainee implements them and the
  * chain lights up. Until then, the model can still investigate via ask_data.
  *
- * KEEP `configureAgentsSdk()` as-is — it handles the Databricks Responses API
- * wiring, the `Connection: close` stale-socket workaround, and the 64-char
- * `input[*].id` strip.
+ * `configureAgentsSdk()` handles the Databricks Responses API wiring, the
+ * `Connection: close` stale-socket workaround, and the 64-char `input[*].id`
+ * strip. The endpoint it points at is now config-driven: the client's baseURL
+ * is `${ctx.databricksHost}${ctx.agentBaseUrlPath}` and the SDK appends
+ * `/responses`, so by default it calls the Unity AI Gateway Responses route
+ * (`/ai-gateway/mlflow/v1/responses`) with `model` = the three-part UC name.
+ * Base path + model come from config/app.json (agentBaseUrlPath / agentModel,
+ * env AGENT_BASE_URL_PATH / AGENT_MODEL) — leave the surrounding wiring alone.
  */
 import type { Request } from 'express';
 import OpenAI from 'openai';
@@ -84,7 +89,15 @@ export type AgentContext = {
    * empty. Set as `genieSpaceId` (env `GENIE_SPACE_ID`). */
   genieSpaceId: string;
   databricksHost: string;
+  /** The agent model the Responses call sends as `model`. For the AI Gateway
+   * this is the THREE-PART UC name (e.g.
+   * `serverless_sandbox_kgi5wi_catalog.brightwave.brightwave-gpt-5-5`). */
   model: string;
+  /** Base path appended to `databricksHost` for the OpenAI client's baseURL;
+   * the Responses route is `<databricksHost><agentBaseUrlPath>/responses`.
+   * Defaults to the Unity AI Gateway (`/ai-gateway/mlflow/v1`). Config-driven
+   * via config/app.json `agentBaseUrlPath` (env AGENT_BASE_URL_PATH). */
+  agentBaseUrlPath: string;
   /** Called by long-running tools to surface progress to the UI. */
   onToolProgress?: (ev: import('./tools/types.js').ToolProgressEvent) => void;
   /** Mutated by the OpenAI fetch shim on any non-2xx. */
@@ -343,9 +356,13 @@ export async function configureAgentsSdk(ctx: AgentContext): Promise<void> {
   // after a long ask_data hop) + strip the >64-char `input[*].id` the SDK
   // echoes back on round 2 (Databricks' Responses API rejects long ids and
   // the streaming gateway masks the 400 as a bare 502). See git history.
+  // Base URL for the OpenAI/Agents SDK client. The SDK appends `/responses`,
+  // so this resolves to `${host}${agentBaseUrlPath}/responses` — the Unity AI
+  // Gateway Responses route by default (agentBaseUrlPath = /ai-gateway/mlflow/v1),
+  // matching the verified curl. `model` is the three-part UC name (ctx.model).
   const client = new OpenAI({
     apiKey: bearer,
-    baseURL: `${ctx.databricksHost}/serving-endpoints`,
+    baseURL: `${ctx.databricksHost}${ctx.agentBaseUrlPath}`,
     maxRetries: 4,
     fetch: async (input, init) => {
       const headers = new Headers(init?.headers);

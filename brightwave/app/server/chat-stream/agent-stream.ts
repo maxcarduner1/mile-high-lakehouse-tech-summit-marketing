@@ -61,6 +61,9 @@ export async function streamAgentTurn(args: {
   genieSpaceId: string;
   databricksHost: string;
   model: string;
+  /** Base path appended to DATABRICKS_HOST for the agent's Responses client.
+   * The Responses route is `<host><agentBaseUrlPath>/responses`. */
+  agentBaseUrlPath: string;
   messages: Msg[];
   /** Threaded into the Agents SDK so we can abort an in-flight run
    *  when the client disconnects (the caller wires this to req.on('close')).
@@ -123,6 +126,7 @@ export async function streamAgentTurn(args: {
       genieSpaceId: args.genieSpaceId,
       databricksHost: args.databricksHost,
       model: args.model,
+      agentBaseUrlPath: args.agentBaseUrlPath,
       modelError,
       // Forward sub-agent activity from the MAS tool (ask_data) live into
       // the outer Thinking panel. Each event is both persisted into

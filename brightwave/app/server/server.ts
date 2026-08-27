@@ -120,6 +120,11 @@ type AppConfig = {
    * too. See `lib/mlflow.ts` for the bootstrap. */
   agentMlflowExperimentPath?: string;
   agentModel?: string;
+  /** Base path appended to DATABRICKS_HOST for the agent's OpenAI/Agents SDK
+   * client. The Responses route lives at `<host><agentBaseUrlPath>/responses`.
+   * Defaults to the Unity AI Gateway (`/ai-gateway/mlflow/v1`) via env in
+   * config/app.json. See campaigndesk.ts → configureAgentsSdk(). */
+  agentBaseUrlPath?: string;
   dashboardId: string;
   /** Workspace resource ids/paths surfaced by /api/resources. Leave any
    * field empty to mark the corresponding tile inert (no deep-link).
@@ -181,6 +186,7 @@ const appConfigSchema = z
     mlflowExperimentId: z.string().optional(),
     agentMlflowExperimentPath: z.string().optional(),
     agentModel: z.string().optional(),
+    agentBaseUrlPath: z.string().optional(),
     dashboardId: z.string(),
     pipelineId: z.string().optional(),
     warehouseId: z.string().optional(),
@@ -491,6 +497,7 @@ await createApp({
       masEndpointName: appConfig.masEndpointName ?? '',
       genieSpaceId: appConfig.genieSpaceId ?? '',
       agentModel: appConfig.agentModel,
+      agentBaseUrlPath: appConfig.agentBaseUrlPath,
     },
   });
   registerCampaignRoutes(app, { db });

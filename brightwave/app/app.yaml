@@ -19,7 +19,7 @@ command: ['node', '--env-file-if-exists=.env', 'dist/server.js']
 # Scopes minted into the user's OBO token (x-forwarded-access-token).
 user_authorization:
   scopes:
-    - model-serving      # OpenAI Agents loop hits /serving-endpoints/responses
+    - model-serving      # model-serving access for the agent loop
     - genie              # ask_data → Genie space
     - sql                # warehouse-backed analytics queries
     - postgres           # Lakebase pool
@@ -44,6 +44,17 @@ env:
   # placeholder resolution.
   - name: WAREHOUSE_ID
     valueFrom: sql-warehouse
+
+  # ── Agent model → Unity AI Gateway Responses endpoint ───────────────────
+  # The Assist agent calls the AI Gateway Responses route:
+  #   POST ${DATABRICKS_HOST}${AGENT_BASE_URL_PATH}/responses
+  # with `model` = the three-part UC name below (verified working via curl).
+  # Both resolve config/app.json's ${AGENT_MODEL} / ${AGENT_BASE_URL_PATH}
+  # placeholders. The `ai-gateway` OBO scope above authorizes the route.
+  - name: AGENT_MODEL
+    value: "serverless_sandbox_kgi5wi_catalog.brightwave.brightwave-gpt-5-5"
+  - name: AGENT_BASE_URL_PATH
+    value: "/ai-gateway/mlflow/v1"
 
   # ── Plain-value env (config/app.json placeholders) ──────────────────────
   # Normally finalize_app.sh harvests these from the setup job's exit JSON and
