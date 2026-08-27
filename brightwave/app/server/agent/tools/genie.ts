@@ -30,7 +30,7 @@
 import { loggedTool as tool } from './logged-tool.js';
 import * as mlflow from 'mlflow-tracing';
 import { z } from 'zod';
-import { authHeaders } from '../../lib/auth.js';
+import { serviceAuthHeaders } from '../../lib/auth.js';
 import type { DataCallResult, DataToolContext, ToolProgressEvent } from './types.js';
 
 /**
@@ -47,7 +47,13 @@ export async function callGenieSpace(
     try { ctx.onToolProgress?.(ev); } catch { /* never let progress fail the tool */ }
   }
 
-  const headers = await authHeaders(ctx.req);
+  // Authenticate as the APP SERVICE PRINCIPAL, NOT the viewing user's OBO token.
+  // The Genie route requires the `genie` scope; the user's minted
+  // `x-forwarded-access-token` lacks it (→ `403 Invalid scope, required scopes:
+  // genie`), while the app SP is authorized. Per-user attribution isn't needed
+  // for this demo, so we use `serviceAuthHeaders()` (always the SP) here — same
+  // as the gateway call. See server/lib/auth.ts for the mechanism.
+  const headers = await serviceAuthHeaders();
   headers.set('Content-Type', 'application/json');
 
   // Start a Genie conversation. 2-min cap on the kickoff call — it's a
@@ -92,7 +98,9 @@ export async function callGenieSpace(
   let answer = '';
   for (let attempts = 0; attempts < POLL_MAX_ATTEMPTS; attempts++) {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-    const pollHeaders = await authHeaders(ctx.req);
+    // App SP again (see start-conversation above) — the poll route needs the
+    // `genie` scope too, which the user OBO token lacks.
+    const pollHeaders = await serviceAuthHeaders();
     pollHeaders.set('Content-Type', 'application/json');
     const pollResp = await fetch(pollUrl, {
       method: 'GET',

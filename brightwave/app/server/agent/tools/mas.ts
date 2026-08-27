@@ -28,7 +28,7 @@
 import { loggedTool as tool } from './logged-tool.js';
 import * as mlflow from 'mlflow-tracing';
 import { z } from 'zod';
-import { authHeaders } from '../../lib/auth.js';
+import { serviceAuthHeaders } from '../../lib/auth.js';
 import type { DataCallResult, DataToolContext, ToolProgressEvent } from './types.js';
 
 /**
@@ -52,7 +52,13 @@ export async function callMasEndpoint(
     }
   }
 
-  const headers = await authHeaders(ctx.req);
+  // Authenticate as the APP SERVICE PRINCIPAL, NOT the viewing user's OBO token.
+  // Like Genie, the MAS route requires the `genie` scope; the user's minted
+  // `x-forwarded-access-token` lacks it (→ `403 Invalid scope, required scopes:
+  // genie`), while the app SP is authorized. Per-user attribution isn't needed
+  // for this demo, so we use `serviceAuthHeaders()` (always the SP) here — same
+  // as the gateway call. See server/lib/auth.ts for the mechanism.
+  const headers = await serviceAuthHeaders();
   headers.set('Content-Type', 'application/json');
   headers.set('Accept', 'text/event-stream');
 
