@@ -36,6 +36,36 @@ export async function authHeaders(req: Request): Promise<Headers> {
     h.set('Authorization', `Bearer ${userToken}`);
     return h;
   }
+  return serviceAuthHeaders();
+}
+
+/**
+ * Build the Authorization header authenticated as the APP SERVICE PRINCIPAL,
+ * ALWAYS — never the viewing user. This is the `else` branch of `authHeaders`
+ * hoisted so a caller can opt into the SP token even when a user OBO token is
+ * present on the request.
+ *
+ * Why the agent's gateway client needs this (DEMO): the Assist agent calls the
+ * Unity AI Gateway Responses route (`/ai-gateway/mlflow/v1/responses`), which
+ * requires the `ai-gateway` scope. The user's minted OBO token
+ * (`x-forwarded-access-token`) does NOT carry that scope, so authenticating the
+ * gateway call as the user returns `403 Invalid scope, required scopes:
+ * ai-gateway`. The app service principal IS authorized for the gateway, and we
+ * don't need per-user attribution on the agent's model call for this demo — so
+ * the gateway client authenticates as the SP instead. Other callers
+ * (ask_data/Genie, warehouse SQL, MLflow) keep using `authHeaders(req)` and
+ * stay OBO-attributed.
+ *
+ * Mechanism: `getExecutionContext()` returns the singleton `ServiceContext`'s
+ * WorkspaceClient here — this app never wraps request handlers in
+ * `Plugin.asUser` / `runInUserContext`, so the execution context is the SP
+ * context, not a user context. In the Apps container the SDK default credential
+ * chain resolves that client to oauth-m2m via env (DATABRICKS_HOST +
+ * DATABRICKS_CLIENT_ID/SECRET), which is exactly the app SP bearer we want.
+ * `config.authenticate(h)` also handles token refresh, so no 1-hour expiry.
+ */
+export async function serviceAuthHeaders(): Promise<Headers> {
+  const h = new Headers();
   const { client } = getExecutionContext();
   await client.config.authenticate(h);
   return h;
