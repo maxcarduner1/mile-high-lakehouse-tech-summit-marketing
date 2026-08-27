@@ -10,7 +10,7 @@
  */
 import type { Request } from 'express';
 import { getExecutionContext } from '@databricks/appkit';
-import { authHeaders } from './auth.js';
+import { serviceAuthHeaders } from './auth.js';
 export async function ensureMlflowExperiment(
   host: string,
   experimentPath: string,
@@ -103,10 +103,18 @@ export async function postMlflowAssessment(args: {
   value: 'up' | 'down';
   rationale?: string;
 }): Promise<string | null> {
-  const { req, host, traceId, userEmail, value, rationale } = args;
+  // `req` stays in the args type so the route caller (server/routes/chat.ts)
+  // is unchanged, but it's no longer read here — see the auth note below.
+  const { host, traceId, userEmail, value, rationale } = args;
   try {
     const base = host.replace(/\/$/, '');
-    const headers = await authHeaders(req);
+    // Write the assessment as the APP SERVICE PRINCIPAL, NOT the viewing user's
+    // OBO token. This demo routes the entire chat/agent path through the app SP
+    // (see genie.ts / campaigndesk.ts): the user's minted OBO token can lack the
+    // scope the assessments route needs (→ `403 Invalid scope, required scopes:`),
+    // and per-user attribution isn't needed for the demo — the HUMAN source_id
+    // below still records who gave the feedback. See server/lib/auth.ts.
+    const headers = await serviceAuthHeaders();
     headers.set('Content-Type', 'application/json');
     const url = `${base}/api/2.0/mlflow/traces/${traceId}/assessments`;
     const resp = await fetch(url, {
