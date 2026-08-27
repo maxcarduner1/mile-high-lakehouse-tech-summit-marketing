@@ -22,6 +22,27 @@ bundle:
 workspace:
   root_path: /Workspace/Users/${workspace.current_user.userName}/brightwave-workshop
 
+# ── Force-ship the app's prebuilt artifacts ────────────────────────────────
+# The Brightwave app is DESIGNED to build LOCALLY (scripts/build-app.sh →
+# npm run build:source) and ship the built output to the Apps container; the
+# container does NOT rebuild (see app/app.yaml header + package.json `build`
+# no-op). The build outputs live under app/ but are .gitignored:
+#   app/dist/**         → server bundle (tsdown)         → `node dist/server.js`
+#   app/client/dist/**  → client bundle (vite)           → served by the server
+#   app/drizzle/**      → generated SQL migrations        → runMigrations() at boot
+# `databricks bundle sync` (which uploads the app's source_code_path=./app
+# subtree the app deploys from) honors .gitignore by DEFAULT, so without this
+# the container received source WITHOUT dist/ and tried to rebuild — failing
+# with `tsdown: not found` (devDeps are absent in the container's prod install).
+# `sync.include` force-includes these otherwise-excluded paths (patterns are
+# relative to this bundle root). Verified via `git check-ignore` (all three are
+# ignored by default) + `databricks bundle sync` landing them in the workspace.
+sync:
+  include:
+    - app/dist/**
+    - app/client/dist/**
+    - app/drizzle/**
+
 variables:
   catalog:
     description: Unity Catalog for the workshop data (must already exist / you can create it).
