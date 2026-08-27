@@ -47,7 +47,7 @@ import type { Tool } from '@openai/agents';
 import { loggedTool as tool } from './tools/logged-tool.js';
 import * as mlflow from 'mlflow-tracing';
 import { z } from 'zod';
-import { authHeaders } from '../lib/auth.js';
+import { serviceAuthHeaders } from '../lib/auth.js';
 import type { AppDb } from '../db/index.js';
 // Ready-made Lakebase query helpers backing the Assist + Act tools below.
 import {
@@ -350,7 +350,15 @@ function makeTools(ctx: AgentContext): Tool[] {
 }
 
 export async function configureAgentsSdk(ctx: AgentContext): Promise<void> {
-  const headers = await authHeaders(ctx.req);
+  // Authenticate the Responses-API gateway client as the APP SERVICE PRINCIPAL,
+  // NOT the viewing user's OBO token. The Unity AI Gateway Responses route
+  // requires the `ai-gateway` scope; the user's minted `x-forwarded-access-token`
+  // lacks it (→ `403 Invalid scope, required scopes: ai-gateway`), while the app
+  // SP is authorized. Per-user attribution isn't needed for the agent's model
+  // call in this demo, so we use `serviceAuthHeaders()` (always the SP) here.
+  // The OBO-attributed callers (ask_data/Genie, warehouse SQL, MLflow) still use
+  // `authHeaders(req)` unchanged. See server/lib/auth.ts for the mechanism.
+  const headers = await serviceAuthHeaders();
   const bearer = headers.get('Authorization')?.replace(/^Bearer /, '') ?? '';
   // Custom fetch: fresh TCP connection per call (avoids the stale-socket 502
   // after a long ask_data hop) + strip the >64-char `input[*].id` the SDK
