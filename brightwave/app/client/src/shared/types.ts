@@ -119,155 +119,27 @@ export type CampaignSummary = {
   avg_roas: number;
 };
 
-// Brightwave domain activity (compatible with legacy audit events)
-export type CampaignActivityEvent = {
-  kind: 'audit';
-  return_id: string; // Same as legacy for backward compat with unchanged views
-  at: string;
-  by: string;
-  action: string;
-  notes: string | null;
-  tool: string | null;
-};
-
-// Legacy activity event types (for unchanged views to compile)
-export type ActivityEventLegacy =
-  | {
-      kind: 'email';
-      return_id: string;
-      at: string;
-      direction: 'outgoing' | 'incoming';
-      from: string | null;
-      to: string | null;
-      subject: string;
-      body: string;
-    }
-  | {
-      kind: 'audit';
-      return_id: string;
-      at: string;
-      by: string;
-      action: string;
-      notes: string | null;
-      tool: string | null;
-    };
-
-// Union that includes both Brightwave and legacy (for unchanged views to compile)
-export type ActivityEvent = CampaignActivityEvent | ActivityEventLegacy;
-
-
-// ── Legacy template types (returns / orders / customers) — kept so the unchanged
-// client operations/ views still compile. Trainees rebuild those views for
-// the Brightwave Campaign Desk (campaign queue + action drawer); until then
-// these keep tsc green. Safe to delete once the views are rekeyed.
-export type ReturnStatus = 'pending' | 'approved' | 'rejected' | 'escalated';
-export type Decision = 'approved' | 'rejected' | 'escalated';
-
-export type ReturnRow = {
-  id: string;
-  customerId: string | null;
-  customerName: string;
-  customerEmail: string;
-  loyaltyTier: string | null;
-  finalTier: 'premium' | 'standard' | null;
-  premiumStatusLabeled: 'premium' | 'not_premium' | null;
-  premiumProb: number | null;
-  angerScore: number | null;
-  sku: string | null;
-  productName: string | null;
+// ── Campaign Desk (client Operations page) — the ranked underperformer queue.
+// Mirrors server/db/queries/campaigns.ts → RankedUnderperformer /
+// CampaignDeskSummary. Keep the two aligned.
+export type RankedUnderperformer = {
+  campaignId: string;
+  campaignName: string | null;
+  channel: string | null;
   category: string | null;
-  lot: string | null;
-  returnReason: string | null;
-  returnValueUsd: string;
-  status: ReturnStatus;
-  couponPctApplied: number | null;
-  region: string | null;
-  returnDate: string | null;
-  createdAt: string;
-  updatedAt: string;
+  roas: number | null;
+  spendToDateUsd: number | null;
+  attributedRevenueUsd: number | null;
+  recoverableSpendUsd: number | null;
+  perfSignal: string | null;
+  hasMatchingWinner: boolean;
+  matchingWinnerCampaignId: string | null;
+  latestActionType: ActionType | null;
+  latestActionStatus: string | null;
 };
 
-export type EmailEntry = {
-  at: string;
-  direction: 'outgoing' | 'incoming';
-  from?: string;
-  to?: string;
-  subject: string;
-  body: string;
-};
-
-export type ReturnDetail = {
-  return_id: string;
-  order_id: string | null;
-  lot_id: string | null;
-  facility: string | null;
-  product_id: string | null;
-  product_name: string | null;
-  category: string | null;
-  return_reason: string | null;
-  return_reason_text: string | null;
-  anger_score: number | null;
-  refund_amount_usd: string;
-  status: ReturnStatus;
-  coupon_pct_applied: number | null;
-  region: string | null;
-  return_date: string | null;
-  order_date: string | null;
-  decided_at: string | null;
-  created_at: string;
-  updated_at: string;
-  customer_id: string | null;
-  customer_name: string | null;
-  customer_email: string | null;
-  loyalty_tier: string | null;
-  customer_region: string | null;
-  customer_country: string | null;
-  registration_date: string | null;
-  order_total_usd: string | null;
-  final_tier: 'premium' | 'standard' | null;
-  premium_status_labeled: 'premium' | 'not_premium' | null;
-  premium_prob: number | null;
-  predicted_at: string | null;
-  emails: EmailEntry[];
-  ai_audit_trail: AuditEntry[];
-};
-
-export type ReturnsSummary = {
-  status: ReturnStatus;
-  n: number;
-  total_usd: string;
-};
-
-export type CityBucket = {
-  city: string;
-  country: string;
-  lat: number;
-  lng: number;
-  total: number;
-  premium: number;
-  refund_usd: number;
-};
-
-export type FacilityRow = {
-  facility: string;
-  return_count: number;
-  pending_count: number;
-  total_refund_usd: string;
-};
-
-export type FacilityLotRow = {
-  lot_id: string;
-  return_count: number;
-  pending_count: number;
-  total_refund_usd: string;
-  product_count: number;
-  product_names: string | null;
-};
-
-export type CustomerOrder = {
-  order_id: string;
-  order_date: string | null;
-  total_usd: string;
-  status: string | null;
-  item_count: number;
+export type CampaignDeskSummary = {
+  bands: { perfBand: string; n: number; recoverableSpendUsd: number }[];
+  totalUnderperformers: number;
+  totalRecoverableSpendUsd: number;
 };

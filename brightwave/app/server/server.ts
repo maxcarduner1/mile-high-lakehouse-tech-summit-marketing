@@ -633,16 +633,34 @@ void (async () => {
   agentExperimentId = await mlflowIdPromise;
   if (agentExperimentId) {
     // Make the mlflow-tracing exporter use the SAME auth as the app's working
-    // client. `mlflow.init({trackingUri:'databricks'})` builds its own bundled
-    // @databricks/sdk-experimental Config, which resolves the DEFAULT
-    // ~/.databrickscfg and IGNORES the DATABRICKS_CONFIG_FILE that appkit's
-    // client is wired to — so it gets no token and every trace upload throws
-    // "cannot configure default credentials". `init` accepts explicit `host` +
-    // `databricksToken` overrides, so we pass the bearer the app client already
-    // resolves (project token in preview, SP/OBO in deploy). We read the token
-    // from the AUTHENTICATED header, not config.token, so it works whether the
-    // profile is PAT or OAuth (OAuth tokens only materialize during
-    // authenticate()). Graceful: on any failure, fall back to the default init.
+    // client. `mlflow.init({trackingUri:'databricks'})` builds its OWN bundled
+    // @databricks/sdk-experimental `Config` and calls `ensureResolved()` on
+    // every trace export. That resolution runs the SDK's EnvironmentLoader,
+    // which picks up BOTH the app's OBO service-principal OAuth env
+    // (DATABRICKS_CLIENT_ID/DATABRICKS_CLIENT_SECRET → auth "oauth") AND the
+    // PAT baked into the container's /home/app/.databrickscfg (→ auth "pat").
+    // Two auth methods → `Config.validate()` throws
+    //   "validate: more than one authorization method configured: oauth and pat"
+    // and every export fails (the log line the deploy was drowning in).
+    //
+    // Fix: pin the exporter to exactly ONE method.
+    //   1. Pass the bearer the app client already resolves (SP/OBO in deploy,
+    //      project token in preview) as an explicit host + PAT override. We
+    //      read it from the AUTHENTICATED header, not config.token, so it works
+    //      whether the underlying profile is PAT or OAuth (OAuth tokens only
+    //      materialize during authenticate()).
+    //   2. Set DATABRICKS_AUTH_TYPE=pat. The SDK's `Config.validate()`
+    //      short-circuits when `authType` is set (resolved from this env var),
+    //      so the co-present OAuth env no longer trips the multi-method guard;
+    //      DefaultCredentials then uses ONLY the PAT provider + our token.
+    //   3. Point databricksConfigPath at a throwaway path so the container's
+    //      .databrickscfg PAT can never be read back in as a second method.
+    //
+    // Safe blast radius: appkit's service-principal WorkspaceClient is a cached
+    // singleton already resolved earlier in boot (migrations/sync/experiment
+    // bootstrap all authenticated it), and per-request OBO clients are built
+    // with an explicit `authType:"pat"` + token — so flipping this env var now
+    // only steers the mlflow SDK's fresh Config, nothing appkit already built.
     let mlflowHost: string | undefined;
     let mlflowToken: string | undefined;
     try {
@@ -656,12 +674,27 @@ void (async () => {
       console.warn('[boot] could not resolve MLflow exporter auth from the app client — trace upload may fail:', (e as Error).message);
     }
 
-    mlflow.init({
-      trackingUri: 'databricks',
-      experimentId: agentExperimentId,
-      ...(mlflowHost && mlflowToken ? { host: mlflowHost, databricksToken: mlflowToken } : {}),
-    });
-    console.log(`[boot +${ms()}] MLflow tracing active`);
+    if (mlflowHost && mlflowToken) {
+      // Force the single-method PAT path for the mlflow SDK's bundled Config.
+      // Set BEFORE init so the first ensureResolved() (per export) sees it.
+      process.env.DATABRICKS_AUTH_TYPE = 'pat';
+      mlflow.init({
+        trackingUri: 'databricks',
+        experimentId: agentExperimentId,
+        host: mlflowHost,
+        databricksToken: mlflowToken,
+        // Isolate from the container PAT (/home/app/.databrickscfg) — a
+        // path with no readable profile, so the config-file loader is a no-op.
+        databricksConfigPath: '/dev/null',
+      });
+      console.log(`[boot +${ms()}] MLflow tracing active (pat auth, host=${mlflowHost})`);
+    } else {
+      // Couldn't resolve a token — don't pin authType (that would only turn the
+      // multi-method error into a no-credentials error). Fall back to the
+      // default init; if it can't authenticate, exports fail but boot survives.
+      mlflow.init({ trackingUri: 'databricks', experimentId: agentExperimentId });
+      console.warn(`[boot +${ms()}] MLflow tracing active WITHOUT explicit auth — trace export may fail (could not resolve app-client token).`);
+    }
 
     // Silence one specific mlflow-tracing warning that fires for every
     // Lakebase query made outside an agent turn (route handlers persisting
