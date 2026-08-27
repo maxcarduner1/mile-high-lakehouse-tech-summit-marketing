@@ -1,0 +1,63 @@
+BRIGHTWAVE CAMPAIGN DESK — BUILD 2 HERO QUESTION & DECISION CHAIN
+=================================================================
+
+THE CUSTOMER'S HERO QUESTION (Priya Anand, CMO — non-technical)
+---------------------------------------------------------------
+"Which campaigns are winning and why, and how do I replicate that across
+the ones that aren't — while the quarter is still in play?"
+
+Framed as a DECISION (not a lookup / dashboard): the app surfaces the
+underperformers, prescribes the best move per campaign (replicate a winner /
+reallocate budget / pause) ranked by projected ROAS lift, lets the CMO approve
+or correct, and commits the decision — reflected on the next read (closed loop).
+
+THE HERO RECORD
+---------------
+Underperformer campaign : CMP-0000214
+  - status            : active
+  - ROAS              : ~1.1  (demand is there; creative isn't resonating)
+  - spend_to_date_usd : ~$2.3M
+  - recoverable_spend : ~$600K
+Matching winner        : <MATCHING_WINNER_CAMPAIGN_ID>   (from live data; social + lifestyle creative, ROAS ~3.2–5)
+Recommended action     : replicate_winner  (predicted ROAS lift ~2.33, predicted net value ~$434K)
+
+THE DECISION CHAIN — LINKED RECORD IDS ACROSS THE EXPORTS
+---------------------------------------------------------
+The same decision is traceable end-to-end across the submission2 artifacts by
+these keys (values marked <...> are filled from the live run at demo time):
+
+1. view_query.sql / view_result.json
+   - ranked live view; CMP-0000214 appears flagged as a top underperformer by
+     recoverable_spend_usd. Key: campaign_id = CMP-0000214.
+
+2. assist_log.jsonl  (assistant interactions)
+   - EXPLANATION run: request asks why CMP-0000214 underperforms →
+     find_underperformer(CMP-0000214) + ask_data (Genie) response.
+   - WHAT-IF run: "rank the action, use the model" →
+     rank_actions(CMP-0000214) returns replicate_winner / reallocate_budget /
+     pause with predicted lifts.
+   - Keys: campaign_id = CMP-0000214 ; matching_winner_campaign_id = <...>.
+
+3. drafted_sample.md  (auto-drafted on-brand brief)
+   - the replicate-the-winner campaign brief drafted for CMP-0000214,
+     grounded on the winner's creative (via search_creatives over Lakebase).
+
+4. writeback_table.json  (writable Postgres app.campaign_actions_app)
+   - the committed action row: id = <ACTION_ID (uuid)>,
+     campaign_id = CMP-0000214, action_type = replicate_winner,
+     target_campaign_id = <MATCHING_WINNER_CAMPAIGN_ID>,
+     status = approved, approved_by = <APPROVER_EMAIL>,
+     created_at = <...>, decided_at = <...>.
+
+5. state_table.json  (Lakebase workflow-state & observability)
+   - the trigger event(s) that refreshed the ranked view (schedule / system
+     update) + the recorded decision, each with timestamps; ties trigger →
+     decision for action_id = <ACTION_ID>.
+
+CLOSED LOOP
+-----------
+After approval, execute_campaign_action writes the row above to
+app.campaign_actions_app; the Campaign Desk queue re-reads and reflects it
+(CMP-0000214 → "Action recorded · replicate_winner", underperformer count −1,
+recoverable-spend KPI ticks down) — the committed decision shows on the next
+read without a reload.

@@ -22,6 +22,18 @@ bundle:
 workspace:
   root_path: /Workspace/Users/${workspace.current_user.userName}/brightwave-workshop
 
+# Force-ship the app's built artifacts even though they're gitignored. The app
+# is DESIGNED to build LOCALLY (scripts/build-app.sh) and ship the prebuilt
+# bundle to the Apps container (app.yaml header); dist/, client/dist/, and the
+# drizzle/ migrations are gitignored, so DAB's default git-aware sync skips
+# them. Without this the container tries to rebuild and fails (tsdown is a
+# devDependency, absent from the container's production install).
+sync:
+  include:
+    - app/dist/**
+    - app/client/dist/**
+    - app/drizzle/**
+
 variables:
   catalog:
     description: Unity Catalog for the workshop data (must already exist / you can create it).
