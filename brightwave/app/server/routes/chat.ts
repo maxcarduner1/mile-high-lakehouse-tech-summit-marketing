@@ -29,6 +29,9 @@ type Deps = {
     /** Genie space id. Registered when `masEndpointName` is empty. */
     genieSpaceId: string;
     agentModel?: string;
+    /** Base path appended to DATABRICKS_HOST for the agent's Responses client
+     * (defaults to the AI Gateway; see campaigndesk.ts). */
+    agentBaseUrlPath?: string;
   };
 };
 
