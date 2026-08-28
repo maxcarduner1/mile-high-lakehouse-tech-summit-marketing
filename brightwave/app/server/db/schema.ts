@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   text,
   timestamp,
@@ -206,8 +207,10 @@ export const actionRecommendations = appSchema.table(
   (t) => [index('recommendations_campaign_idx').on(t.campaignId)],
 );
 
-// `raw_creatives` — campaign creative catalog (name + description).
-// Searchable `description` is indexed by Lakebase Search for the `search_creatives` tool.
+// `raw_creatives` — campaign creative catalog (name + angle + type + description).
+// The searchable text is indexed by a Lakebase Search index — a Postgres
+// full-text (tsvector) GIN index — that the `search_creatives` tool queries
+// directly via websearch_to_tsquery (see searchCreatives in queries/campaigns.ts).
 export const creatives = appSchema.table(
   'creatives',
   {
@@ -216,11 +219,26 @@ export const creatives = appSchema.table(
     creativeName: text('creative_name'),
     creativeType: text('creative_type'),
     angle: text('angle'),
-    // Searchable description (indexed by Lakebase Search).
+    // Part of the full-text search document (indexed by the GIN index below).
     description: text('description'),
     isActive: boolean('is_active'),
   },
-  (t) => [index('creatives_type_idx').on(t.creativeType)],
+  (t) => [
+    index('creatives_type_idx').on(t.creativeType),
+    // Lakebase Search index: a functional GIN index over the English tsvector
+    // of the creative's searchable text (name + angle + type + description).
+    // Functional (expression) index — no generated column — so it is fully
+    // transparent to the boot Delta→Lakebase sync's plain column INSERTs
+    // (db/sync.ts) and keeps `app.creatives` a read-only mirror. Retrieval
+    // stays INSIDE Lakebase (no separate vector store). Query it with the
+    // matching to_tsvector(...) @@ websearch_to_tsquery('english', $q) predicate
+    // so the planner uses this index.
+    index('creatives_fts_idx')
+      .using(
+        'gin',
+        sql`to_tsvector('english', coalesce(${t.creativeName}, '') || ' ' || coalesce(${t.angle}, '') || ' ' || coalesce(${t.creativeType}, '') || ' ' || coalesce(${t.description}, ''))`,
+      ),
+  ],
 );
 
 // ============================================================================

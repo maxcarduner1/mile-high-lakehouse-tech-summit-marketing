@@ -12,7 +12,7 @@
  * app.action_recommendations, app.creatives). recordCampaignAction is the
  * ONLY writer — it inserts into the app's own app.campaign_actions_app table.
  */
-import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import type { AppDb } from '../index.js';
 import {
   campaignPosition,
@@ -218,9 +218,18 @@ export async function getRecommendation(
 }
 
 /**
- * Text search over the creative catalog in Lakebase Postgres — the Lakebase
- * Search showcase. Case-insensitive match across the creative's name, angle,
- * type, and description; only active creatives; top matches first.
+ * Full-text search over the creative catalog — the Lakebase Search showcase.
+ *
+ * Retrieves DIRECTLY from the Lakebase Search index: a Postgres full-text
+ * (tsvector) GIN index over the creative's searchable text (name + angle +
+ * type + description), defined on `app.creatives` as `creatives_fts_idx`
+ * (see schema.ts). This keeps retrieval INSIDE Lakebase — no separate vector
+ * store. The `docExpr` below is the SAME to_tsvector(...) expression the index
+ * is built on, so the planner can use the GIN index for the `@@` match.
+ *
+ * Natural queries ("social lifestyle", "back to school promo") are parsed with
+ * websearch_to_tsquery; results are ranked by ts_rank relevance, then name.
+ * Only active creatives; top matches first.
  */
 export async function searchCreatives(
   db: AppDb,
@@ -229,24 +238,28 @@ export async function searchCreatives(
 ): Promise<CreativeRow[]> {
   const q = query.trim();
   if (!q) return [];
-  const term = `%${q}%`;
-  const match = or(
-    ilike(creatives.creativeName, term),
-    ilike(creatives.angle, term),
-    ilike(creatives.creativeType, term),
-    ilike(creatives.description, term),
-  );
+
+  // The indexed full-text document: MUST match creatives_fts_idx exactly so
+  // the GIN index is used. name + angle + type + description, English config.
+  const docExpr = sql`to_tsvector('english', coalesce(${creatives.creativeName}, '') || ' ' || coalesce(${creatives.angle}, '') || ' ' || coalesce(${creatives.creativeType}, '') || ' ' || coalesce(${creatives.description}, ''))`;
+
+  // Primary query parser: websearch_to_tsquery handles natural phrases like
+  // "social lifestyle" or 'back to school -clearance'.
+  const websearch = sql`websearch_to_tsquery('english', ${q})`;
+  // Graceful prefix fallback for very short/odd queries ("lux" → "luxe…"):
+  // rewrite each lexeme of plainto_tsquery to a prefix (:*) tsquery. This stays
+  // a SINGLE Lakebase FTS query (no ILIKE), still index-backed by the same
+  // tsvector `@@`. Empty for all-stopword input, which is harmless.
+  const prefix = sql`to_tsquery('english', regexp_replace(plainto_tsquery('english', ${q})::text, '''(\\s|$)', ''':*\\1', 'g'))`;
+  // Combined query used for BOTH the match predicate and the relevance rank.
+  const tsq = sql`(${websearch} || ${prefix})`;
+
   return db
     .select()
     .from(creatives)
-    .where(and(eq(creatives.isActive, true), match))
-    // Rank name/angle hits above description-only hits, then stable by name.
-    .orderBy(
-      desc(
-        sql`(${ilike(creatives.creativeName, term)})::int + (${ilike(creatives.angle, term)})::int`,
-      ),
-      creatives.creativeName,
-    )
+    .where(and(eq(creatives.isActive, true), sql`${docExpr} @@ ${tsq}`))
+    // Rank by full-text relevance (ts_rank), then stable by name.
+    .orderBy(desc(sql`ts_rank(${docExpr}, ${tsq})`), creatives.creativeName)
     .limit(limit);
 }
 
