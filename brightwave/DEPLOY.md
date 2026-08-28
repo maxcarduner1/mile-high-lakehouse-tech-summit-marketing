@@ -59,5 +59,5 @@ databricks bundle run brightwave -t dev --profile kgi5wi
 | Genie space | `01f1a23cb2351042be83c6d1f552fa67` |
 | AI/BI dashboard | `01f1a23d02001faab2184ad40dce0b8b` |
 | SDP pipeline | `ff86c416-9b67-495b-8c84-0d95f1b9ba07` (`brightwave_campaign_360`) |
-| Lakebase branch | `projects/birghtwave/branches/development` (`CAN_CONNECT_AND_CREATE`) |
-| Lakebase database | `projects/birghtwave/branches/development/databases/databricks-postgres` |
+| Lakebase branch | `projects/birghtwave/branches/production` (`CAN_CONNECT_AND_CREATE`) |
+| Lakebase database | `projects/birghtwave/branches/production/databases/databricks-postgres` |

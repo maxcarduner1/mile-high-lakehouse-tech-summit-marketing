@@ -9,8 +9,10 @@
  *
  * The read helpers SELECT from the READ-ONLY synced mirrors
  * (app.campaign_position, app.open_underperformers,
- * app.action_recommendations, app.creatives). recordCampaignAction is the
- * ONLY writer — it inserts into the app's own app.campaign_actions_app table.
+ * app.action_recommendations). searchCreatives is the exception — it retrieves
+ * from Angela's Build-1 Lakebase Search index (brightwave.campaign_search) on
+ * the production branch. recordCampaignAction is the ONLY writer — it inserts
+ * into the app's own app.campaign_actions_app table.
  */
 import { desc, eq, sql } from 'drizzle-orm';
 import type { AppDb } from '../index.js';
@@ -18,7 +20,6 @@ import {
   campaignPosition,
   openUnderperformers,
   actionRecommendations,
-  creatives,
   campaignActions,
   workflowState,
   type ActionOption,
@@ -29,8 +30,28 @@ import {
 export type CampaignRow = typeof campaignPosition.$inferSelect;
 /** An underperformer row (app.open_underperformers). */
 export type Underperformer = typeof openUnderperformers.$inferSelect;
-/** A single creative catalog row (app.creatives). */
-export type CreativeRow = typeof creatives.$inferSelect;
+
+/**
+ * One winning-campaign hit from the Build-1 Lakebase Search index
+ * (`brightwave.campaign_search`), as returned by `searchCreatives`. These are
+ * CAMPAIGN rows (not creative-catalog rows) — the index Angela built stores one
+ * row per campaign with its creative angle + summary + performance, so a BM25
+ * search surfaces winning campaigns/angles to replicate.
+ */
+export type CampaignSearchRow = {
+  campaignId: string;
+  campaignName: string | null;
+  channel: string | null;
+  category: string | null;
+  targetSegment: string | null;
+  creativeAngle: string | null;
+  campaignSummary: string | null;
+  status: string | null;
+  roas: number | null;
+  perfBand: string | null;
+  /** lakebase_bm25 relevance score — smaller (more negative) = more relevant. */
+  score: number;
+};
 /** The 'replicate_winner' | 'reallocate_budget' | 'pause' action space. */
 export type ActionType = NonNullable<typeof campaignActions.$inferInsert.actionType>;
 
@@ -218,75 +239,79 @@ export async function getRecommendation(
 }
 
 /**
- * BM25 search over the creative catalog — the Lakebase Search showcase.
+ * BM25 search over the campaign catalog — the Build-1 Lakebase Search showcase.
  *
- * Retrieves DIRECTLY from the Build-1 Lakebase Search index: a BM25 index
- * (the `lakebase_text` extension's `lakebase_bm25` access method) built on
- * `app.creatives` over the creative's searchable text (name + angle + type +
- * description). We query it with the extension's `<@> to_bm25query(...)`
- * operator, which returns a BM25 relevance score per row — so retrieval stays
- * INSIDE Lakebase, pulling from that one index, with no separate vector store
- * and no ILIKE scan.
+ * Retrieves DIRECTLY from Angela's Build-1 Lakebase Search index:
+ * `brightwave.campaign_search` (owned by angela.tsai, on the PRODUCTION branch)
+ * carries one row per campaign with a `summary_tsv` tsvector GENERATED from
+ * campaign_summary + creative_angle + campaign_name, and a BM25 index
+ * (`brightwave.campaign_search_bm25`, the `lakebase_bm25` access method) over
+ * that column. We query it with the extension's `<@> to_bm25query(...)`
+ * operator against the pre-generated `summary_tsv`, so retrieval stays INSIDE
+ * Lakebase, pulling from that one index — no separate vector store, no ILIKE
+ * scan, no per-row to_tsvector recompute.
  *
- * The index is provisioned OUT-OF-BAND (see schema.ts) as
- * `app.creatives_bm25_idx`: `app.creatives` is owned by a different principal
- * than the app service principal, so the app cannot create it in a boot
- * migration ("must be owner") — it is managed externally, NOT by Drizzle.
+ * The index is provisioned OUT-OF-BAND on Angela's branch (not by Drizzle): the
+ * table is owned by a different principal than the app service principal, so a
+ * boot migration that issued CREATE INDEX would fail with "must be owner". The
+ * app SP has read access; it queries the index, it does not manage it.
  *
  * `to_bm25query` takes the query tsvector and the SCHEMA-QUALIFIED index name
- * ('app.creatives_bm25_idx'). lakebase_bm25 scores are NEGATIVE — smaller
- * (more negative) means more relevant — so we ORDER BY score ASC. Only active
- * creatives (prefiltered); top matches first.
+ * ('brightwave.campaign_search_bm25'). lakebase_bm25 scores are NEGATIVE —
+ * smaller (more negative) means more relevant — so we ORDER BY score ASC; top
+ * matches first. Returns CAMPAIGN rows (winning campaigns / creative angles to
+ * replicate), not creative-catalog rows.
  */
 export async function searchCreatives(
   db: AppDb,
   query: string,
   limit = 8,
-): Promise<CreativeRow[]> {
+): Promise<CampaignSearchRow[]> {
   const q = query.trim();
   // Blank/whitespace query has nothing to rank — skip the BM25 call rather than
   // hand to_bm25query an empty tsvector. (No ILIKE fallback: retrieval is BM25.)
   if (!q) return [];
 
-  // The searchable document MUST match the expression creatives_bm25_idx is
-  // built on (name + angle + type + description, English config) so the BM25
-  // index is used. The `<@> to_bm25query(...)` operator yields the BM25 score.
+  // Score against the pre-generated `summary_tsv` column the campaign_search_bm25
+  // index is built on. The `<@> to_bm25query(...)` operator yields the BM25 score.
   const result = await db.execute(sql`
     SELECT
-      id,
-      creative_id,
-      creative_name,
-      creative_type,
-      angle,
-      description,
-      is_active,
+      campaign_id,
+      campaign_name,
+      channel,
+      category,
+      target_segment,
+      creative_angle,
+      campaign_summary,
+      status,
+      roas,
+      perf_band,
       (
-        to_tsvector(
-          'english',
-          coalesce(creative_name, '') || ' ' || coalesce(angle, '') || ' '
-            || coalesce(creative_type, '') || ' ' || coalesce(description, '')
-        )
+        summary_tsv
         <@> to_bm25query(
           to_tsvector('english', ${q}),
-          'app.creatives_bm25_idx'
+          'brightwave.campaign_search_bm25'
         )
       ) AS score
-    FROM app.creatives
-    WHERE is_active
+    FROM brightwave.campaign_search
     ORDER BY score ASC
     LIMIT ${limit}
   `);
 
-  // Map snake_case DB columns → the camelCase CreativeRow shape the
-  // search_creatives tool consumes (unchanged).
+  // Map snake_case DB columns → the camelCase CampaignSearchRow shape the
+  // search_creatives tool consumes.
   return (result.rows as Record<string, unknown>[]).map((r) => ({
-    id: r.id as string,
-    creativeId: r.creative_id as string,
-    creativeName: r.creative_name as string | null,
-    creativeType: r.creative_type as string | null,
-    angle: r.angle as string | null,
-    description: r.description as string | null,
-    isActive: r.is_active as boolean | null,
+    campaignId: r.campaign_id as string,
+    campaignName: r.campaign_name as string | null,
+    channel: r.channel as string | null,
+    category: r.category as string | null,
+    targetSegment: r.target_segment as string | null,
+    creativeAngle: r.creative_angle as string | null,
+    campaignSummary: r.campaign_summary as string | null,
+    status: r.status as string | null,
+    roas: r.roas === null ? null : Number(r.roas),
+    perfBand: r.perf_band as string | null,
+    score: Number(r.score),
   }));
 }
 
