@@ -1,4 +1,5 @@
-*   6aafd95 (HEAD -> build/brightwave-app, origin/build/brightwave-app) Merge pull request #13 from maxcarduner1/feat/switch-to-production-branch
+* a014f16 (HEAD -> build/brightwave-app, origin/build/brightwave-app) submission2: regenerate all evidence on Angela's production branch
+*   6aafd95 Merge pull request #13 from maxcarduner1/feat/switch-to-production-branch
 |\  
 | * 6c7312d (origin/feat/switch-to-production-branch, feat/switch-to-production-branch) Switch app to Build-1 production Lakebase branch + retrieve from Angela's campaign_search index
 |/  

@@ -13,7 +13,8 @@ approved action `b1de8a8e-cac0-469c-910a-4942fcf68e8b`).
 | `state_table.json` | Visualize+Act | export of Lakebase workflow-state / observability table (trigger events + recorded decisions w/ timestamps) | ✅ 5 trigger + 1 decision |
 | `view_query.sql` | Visualize | the query backing the ranked live view | ✅ app ranked-queue query |
 | `view_result.json` | Visualize | its returned rows | ✅ 30 live rows, hero rank #3 |
-| `assist_log.jsonl` | Assist | assistant interactions (request + model response): ≥1 explanation + ≥1 what-if | ✅ 3: explanation + what-if + draft |
+| `assist_log.jsonl` | Assist | assistant interactions (request + model response): ≥1 explanation + ≥1 what-if + a search_creatives retrieval + an execute | ✅ 5 interactions |
+| `search_query.sql` + `search_result.json` | Assist (retrieval) | **Retrieval from the Build-1 Lakebase Search index** — the BM25 query (`<@> to_bm25query`) the `search_creatives` tool runs directly against Angela's `brightwave.campaign_search` (`campaign_search_bm25`, `lakebase_bm25`) + its live returned rows. NOT a separate vector store. | ✅ 8 rows, top hit CMP-0000469 |
 | `drafted_sample.md` | Assist | a sample auto-drafted memo/brief | ✅ live agent-drafted memo |
 | `hero_question.txt` | cross-cut | hero question + linked record IDs (the decision chain) | ✅ 790→469 chain |
 | `git_history.txt` | cross-cut | `git log --graph --oneline --decorate --all` showing layer-by-layer build on the dev branch off main | ✅ generated |
