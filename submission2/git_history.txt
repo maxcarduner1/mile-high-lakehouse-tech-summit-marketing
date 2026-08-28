@@ -1,4 +1,10 @@
-* 849532f (HEAD -> build/brightwave-app, origin/build/brightwave-app) Track post-handoff progress: PR10/11 merged+deployed, refresh trigger green, action_recs populated, hero=CMP-0000790
+*   8c93bf2 (HEAD -> build/brightwave-app, origin/build/brightwave-app) Merge pull request #12 from maxcarduner1/fix/lakebase-search-creatives
+|\  
+| * 1cefe65 (origin/fix/lakebase-search-creatives, fix/lakebase-search-creatives) search_creatives: retrieve from Lakebase Search BM25 index (lakebase_text) not ILIKE
+| * 431c9c1 search_creatives: retrieve from a Lakebase Search (Postgres FTS) index, not ILIKE
+|/  
+* 82639a0 submission2: all 8 evidence artifacts captured from live app (hero CMP-0000790 -> CMP-0000469)
+* 849532f Track post-handoff progress: PR10/11 merged+deployed, refresh trigger green, action_recs populated, hero=CMP-0000790
 *   8183f43 Merge pull request #11 from maxcarduner1/fix/refresh-job-crash
 |\  
 | * 7d12058 (origin/fix/refresh-job-crash, fix/refresh-job-crash) Make refresh job deploy-clean: drop run_as, fix dev-mode schema mangling

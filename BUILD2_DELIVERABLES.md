@@ -60,6 +60,45 @@ replicate that across the ones that aren't?"* — hero record: **CMP-0000214**
 
 ---
 
+## ✅ VALIDATOR GAP CLOSED: Lakebase Search retrieval (PR #12 merged)
+
+- Feedback was: "app is missing retrieval from the Build-1 Lakebase Search
+  index; pull from that index directly rather than a separate store."
+- Root cause: `search_creatives` used plain ILIKE (option A), not a search index.
+- Fix: user enabled Lakebase Search → exposed `lakebase_text` (BM25) extension.
+  Orchestrator installed it + created `app.creatives_bm25_idx` (BM25 index over
+  name+angle+type+description) OUT-OF-BAND (app SP doesn't own app.creatives).
+  PR #12 rewrote `searchCreatives` to query it directly via `<@> to_bm25query(
+  ..., 'app.creatives_bm25_idx')` ORDER BY score ASC. Reviewed PASS (same-vendor
+  claude_code), merged, deployed, LIVE-VERIFIED: search_creatives returned 8
+  lifestyle creatives (CRE-00010/16/18/19/24/25/27/31) from the BM25 index.
+- submission2 refreshed: assist_log.jsonl now has a 4th interaction
+  `creative_search_lakebase_bm25` documenting retrieval from the index + the
+  returned IDs; git_history.txt refreshed; submission2.zip rebuilt.
+- Trivial follow-up (non-blocking, needs sub-agent for the .ts edit): schema.ts
+  ~line 226 comment still says "GIN index" but it's a BM25 index. Cosmetic;
+  address only if we touch schema again.
+
+## KNOWN ISSUE (planned fix): Drizzle migration re-apply crash (42P06)
+
+- Symptom: any redeploy that follows a `schema.ts` change can crash boot with
+  `DB init failed: CREATE SCHEMA "app"; pg=42P06 (duplicate_schema)`.
+- Mechanism (traced by subagent, to be reconfirmed at fix time): `db:generate`
+  regenerates a SQUASHED `0000` migration from scratch each build with a NEW
+  timestamp; Drizzle's migrator then treats it as new and re-runs the WHOLE
+  file, and the non-idempotent `CREATE SCHEMA "app"` (+ CREATE TABLE/INDEX with
+  no IF NOT EXISTS) aborts the migration transaction on an already-initialized
+  DB. Unchanged-schema redeploys are fine (hash matches, nothing re-applied) —
+  it only detonates on a schema change.
+- This is the root cause behind several workarounds this session: needing
+  `/api/admin/reset` (forceIfAnyEmpty) to re-run the action_recs sync, and
+  creating the Lakebase BM25 index OUT-OF-BAND instead of in a boot migration.
+- PLANNED FIX (do AFTER the BM25 PR merges, to avoid worktree collision on
+  schema.ts/drizzle): Option 1 — post-`db:generate` transform to make the
+  baseline idempotent (CREATE SCHEMA/TABLE/INDEX -> IF NOT EXISTS), wired into
+  the db:generate step. Follow-up Option 2 — switch to incremental (append-only)
+  Drizzle migrations instead of regenerating a squashed baseline every build.
+
 ## Post-handoff continuation (resumed session)
 
 ### ✅ action_recommendations mirror NOW POPULATED (rank_actions live)
