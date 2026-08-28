@@ -5,7 +5,6 @@ import {
   campaignPosition,
   openUnderperformers,
   actionRecommendations,
-  creatives,
 } from './schema.js';
 import type { ActionOption } from './schema.js';
 
@@ -17,11 +16,15 @@ import type { ActionOption } from './schema.js';
  * > build we keep it simple: a manual one-shot sync at boot, code we can
  * > show, no extra resource. Same outcome on screen.
  *
- * Pulls the four READ-ONLY Gold/raw mirrors:
+ * Pulls the three READ-ONLY Gold mirrors:
  *   - campaign_position         (current campaign position + performance band)
  *   - open_underperformers      (underperforming campaigns + matching winners)
  *   - action_recommendations    (the ML model's ranked actions)
- *   - creatives                 (campaign creative catalog)
+ *
+ * NOTE: there is NO creatives mirror. search_creatives retrieves directly from
+ * Angela's Build-1 Lakebase Search index (brightwave.campaign_search) on the
+ * production branch — there is no raw_creatives Delta source to mirror, and
+ * reading one would 503 the whole app at boot.
  *
  * `campaign_actions_app` is the app's own WRITABLE table — never synced, starts empty.
  *
@@ -45,8 +48,6 @@ type DataConfig = {
     /** gold_action_recommendations — the ML model's ranked actions.
      *  Built by the trainee; sync tolerates it not existing yet. */
     actionRecommendations?: string;
-    /** raw_creatives — campaign creative catalog. */
-    creatives: string;
   };
 };
 
@@ -70,7 +71,7 @@ export async function syncFromDelta(
   console.log('[sync] Starting Delta → Lakebase sync (parallel)…');
   const t0 = Date.now();
 
-  const fq = (name: 'campaignPosition' | 'openUnderperformers' | 'actionRecommendations' | 'creatives') =>
+  const fq = (name: 'campaignPosition' | 'openUnderperformers' | 'actionRecommendations') =>
     `${cfg.catalog}.${cfg.schema}.${cfg.tables[name]}`;
 
   const hasActionTable = Boolean(cfg.tables.actionRecommendations);
@@ -78,7 +79,7 @@ export async function syncFromDelta(
   // Fire the queries in parallel (the slow part). The action-recommendations
   // query is BEST-EFFORT (the trainee may not have built that Gold table yet),
   // so run it defensively and swallow a TABLE_OR_VIEW_NOT_FOUND into an empty result.
-  const [positionRows, underperformRows, creativesRows, actionRows] = await Promise.all([
+  const [positionRows, underperformRows, actionRows] = await Promise.all([
     execSql<{
       campaign_id: string;
       campaign_name: string | null;
@@ -119,18 +120,6 @@ export async function syncFromDelta(
               recoverable_spend_usd, spend_to_date_usd, has_matching_winner,
               matching_winner_campaign_id, matching_winner_roas, reallocate_target_campaign_id
        FROM ${fq('openUnderperformers')}`,
-    ),
-    execSql<{
-      creative_id: string;
-      creative_name: string | null;
-      creative_type: string | null;
-      angle: string | null;
-      description: string | null;
-      is_active: boolean | null;
-    }>(
-      warehouseId,
-      `SELECT creative_id, creative_name, creative_type, angle, description, is_active
-       FROM ${fq('creatives')}`,
     ),
     hasActionTable
       ? execSql<{
@@ -227,28 +216,6 @@ export async function syncFromDelta(
   }
   console.log(
     `[sync]   underperformers: ${underperformRows.length} (${((Date.now() - t0) / 1000).toFixed(1)}s)`,
-  );
-
-  if (creativesRows.length) {
-    await chunkInsert(creativesRows, 5_000, (chunk) =>
-      db
-        .insert(creatives)
-        .values(
-          chunk.map((r) => ({
-            id: r.creative_id,
-            creativeId: r.creative_id,
-            creativeName: r.creative_name,
-            creativeType: r.creative_type,
-            angle: r.angle,
-            description: r.description,
-            isActive: r.is_active,
-          })),
-        )
-        .onConflictDoNothing(),
-    );
-  }
-  console.log(
-    `[sync]   creatives: ${creativesRows.length} (${((Date.now() - t0) / 1000).toFixed(1)}s)`,
   );
 
   if (actionRows.length) {

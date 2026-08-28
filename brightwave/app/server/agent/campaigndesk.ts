@@ -19,7 +19,7 @@
  * still compiles + boots, and the model knows the tools exist):
  *   - `find_underperformer`       → Build 2 (Assist): read the underperformer
  *   - `rank_actions`              → Build 2 (Assist): read the ML recommendation
- *   - `search_creatives`          → Build 2 (Assist): Lakebase Search over creatives
+ *   - `search_creatives`          → Build 2 (Assist): Lakebase Search over campaigns
  *   - `execute_campaign_action`   → Build 3 (Act):   the human-in-the-loop write
  *
  * The three-phase chain (Discover → Draft+confirm → Execute) is described in
@@ -234,17 +234,19 @@ function makeTools(ctx: AgentContext): Tool[] {
       ),
   });
 
-  // ── search_creatives — TRAINEE BUILDS (Build 2 · Assist). STUB. ───────────
-  // TODO — BUILD 2 (trainee): implement this using Lakebase Search over
-  // campaign creative descriptions. See APP_WORKSHOP.md.
+  // ── search_creatives — Build 2 · Assist. Lakebase Search (BM25). ──────────
+  // Retrieves from Angela's Build-1 Lakebase Search index
+  // (brightwave.campaign_search + campaign_search_bm25) on the production
+  // branch — one row per campaign with its creative angle + summary. Returns
+  // CAMPAIGN rows (winning campaigns / angles to replicate).
   const searchCreatives = tool({
     name: 'search_creatives',
     description:
-      'Search the creative catalog (names + descriptions) using Lakebase Search. Returns matching creatives with context.',
+      'Search the campaign catalog via the Build-1 Lakebase Search (BM25) index to find WINNING campaigns and creative angles worth replicating. Matches on campaign summary + creative angle + name. Use it to surface high-ROAS campaigns for a given theme (e.g. "social lifestyle apparel", "video", "retargeting") so their approach can be replicated on an underperformer. Returns ranked campaign rows with channel, category, target segment, creative angle, ROAS and performance band.',
     parameters: z.object({
       query: z
         .string()
-        .describe('Search query, e.g. "lifestyle" or "social media" or "video"'),
+        .describe('Search query describing the theme/angle to find winners for, e.g. "social lifestyle apparel", "video", "retargeting".'),
     }),
     execute: async ({ query }) =>
       mlflow.withSpan(
@@ -255,13 +257,17 @@ function makeTools(ctx: AgentContext): Tool[] {
             found: true,
             query,
             count: matches.length,
-            creatives: matches.map((c) => ({
-              creative_id: c.creativeId,
-              creative_name: c.creativeName,
-              creative_type: c.creativeType,
-              angle: c.angle,
-              description: c.description,
-              is_active: c.isActive,
+            campaigns: matches.map((c) => ({
+              campaign_id: c.campaignId,
+              campaign_name: c.campaignName,
+              channel: c.channel,
+              category: c.category,
+              target_segment: c.targetSegment,
+              creative_angle: c.creativeAngle,
+              campaign_summary: c.campaignSummary,
+              status: c.status,
+              roas: c.roas,
+              perf_band: c.perfBand,
             })),
           };
         },

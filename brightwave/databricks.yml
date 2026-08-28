@@ -220,10 +220,12 @@ targets:
     variables:
       catalog: serverless_sandbox_kgi5wi_catalog
       warehouse_id: 50792739f9da1305
-      # Bind the app to the DEVELOPMENT branch (production branch also exists:
-      # projects/birghtwave/branches/production — swap here for prod).
+      # Bind the app to Angela's Build-1 PRODUCTION branch — this is where her
+      # Lakebase Search index (brightwave.campaign_search + campaign_search_bm25)
+      # lives, which search_creatives now retrieves from. (The development branch
+      # also exists: projects/birghtwave/branches/development — swap here for dev.)
       # NB: the project slug is "birghtwave" (as created in the workspace).
-      lakebase_branch: projects/birghtwave/branches/development
-      lakebase_database: projects/birghtwave/branches/development/databases/databricks-postgres
+      lakebase_branch: projects/birghtwave/branches/production
+      lakebase_database: projects/birghtwave/branches/production/databases/databricks-postgres
   prod:
     mode: production
