@@ -121,7 +121,10 @@ resources:
       # Run as the app service principal so it owns/can-write app.workflow_state
       # without an extra grant. Left commented for the template (no SP id here);
       # the orchestrator sets this at deploy, or grants INSERT to the job's
-      # identity (see notebook footer).
+      # identity (see notebook footer). NOTE: the running demo is unblocked via
+      # the grant path — the app SP granted the deploying user USAGE ON SCHEMA app
+      # + INSERT,SELECT ON app.workflow_state — so run_as is NOT needed here (and
+      # binding it would require servicePrincipal.user on the SP at deploy time).
       # run_as:
       #   service_principal_name: <app-sp-application-id>
       schedule:
@@ -135,7 +138,14 @@ resources:
             notebook_path: ./resources/refresh_job/refresh_workflow_state.py
             base_parameters:
               catalog: ${var.catalog}
-              schema: ${resources.schemas.demo_schema.name}
+              # Use the literal ${var.schema} (the real data schema holding the
+              # Build-1 synced Gold tables), NOT ${resources.schemas.demo_schema.name}:
+              # in `mode: development` DAB name-prefixes managed resources, so the
+              # latter resolves to `dev_<user>_brightwave` — a schema with no Gold
+              # tables — making _safe_count read a missing table and stamp null
+              # rowCounts. The trigger reads the shared Gold schema, so bind the
+              # unmangled name.
+              schema: ${var.schema}
               lakebase_endpoint: ${var.lakebase_branch}/endpoints/primary
               pg_database: databricks_postgres
           environment_key: refresh_env
@@ -145,7 +155,11 @@ resources:
             client: "5"
             dependencies:
               - databricks-sdk
-              - psycopg2-binary
+              # pg8000 (pure-Python PG driver), NOT psycopg2-binary: any wheel that
+              # bundles a native libpq SIGABRTs the serverless kernel at import time
+              # (libpq/OpenSSL symbol clash with the Spark process). See the notebook
+              # header for the full diagnosis.
+              - pg8000
 
   # ── Databricks App: Brightwave Campaign Desk ───────────────────────────────
   # Deploys the existing `brightwave` App (AppKit Node/TS, source in ./app) and
