@@ -364,12 +364,22 @@ export async function configureAgentsSdk(ctx: AgentContext): Promise<void> {
   // call in this demo, so we use `serviceAuthHeaders()` (always the SP) here.
   // The OBO-attributed callers (ask_data/Genie, warehouse SQL, MLflow) still use
   // `authHeaders(req)` unchanged. See server/lib/auth.ts for the mechanism.
+  // Seed the SDK with an initial SP bearer so it has a truthy `apiKey`, but this
+  // token is NOT the source of truth: the custom fetch below re-mints a FRESH SP
+  // Authorization header on EVERY request (and retries once on 401). Databricks
+  // Apps rotates the injected SP credential periodically, so a bearer frozen here
+  // at construction goes stale after some hours → the gateway returns
+  // `401 Invalid Token` and the agent (Assist) breaks until the app is restarted.
+  // `serviceAuthHeaders()` refreshes under the hood (config.authenticate), so
+  // calling it per-request is cheap and self-heals across credential rotation.
   const headers = await serviceAuthHeaders();
   const bearer = headers.get('Authorization')?.replace(/^Bearer /, '') ?? '';
-  // Custom fetch: fresh TCP connection per call (avoids the stale-socket 502
-  // after a long ask_data hop) + strip the >64-char `input[*].id` the SDK
-  // echoes back on round 2 (Databricks' Responses API rejects long ids and
-  // the streaming gateway masks the 400 as a bare 502). See git history.
+  // Custom fetch: fresh SP Authorization per call (self-heals the periodic Apps
+  // SP-credential rotation that otherwise 401s a boot-cached token) + fresh TCP
+  // connection per call (avoids the stale-socket 502 after a long ask_data hop)
+  // + strip the >64-char `input[*].id` the SDK echoes back on round 2
+  // (Databricks' Responses API rejects long ids and the streaming gateway masks
+  // the 400 as a bare 502). See git history.
   // Base URL for the OpenAI/Agents SDK client. The SDK appends `/responses`,
   // so this resolves to `${host}${agentBaseUrlPath}/responses` — the Unity AI
   // Gateway Responses route by default (agentBaseUrlPath = /ai-gateway/mlflow/v1),
@@ -380,6 +390,13 @@ export async function configureAgentsSdk(ctx: AgentContext): Promise<void> {
     maxRetries: 4,
     fetch: async (input, init) => {
       const headers = new Headers(init?.headers);
+      // SELF-HEAL: overwrite whatever (possibly stale) bearer the SDK injected
+      // from `apiKey` with a FRESH SP token minted this instant. This is what
+      // makes the client survive the periodic Apps SP-credential rotation
+      // instead of dying with `401 Invalid Token` until a restart.
+      const fresh = await serviceAuthHeaders();
+      const auth = fresh.get('Authorization');
+      if (auth) headers.set('Authorization', auth);
       headers.set('Connection', 'close');
       let body = init?.body;
       if (typeof body === 'string' && body.startsWith('{')) {
@@ -429,6 +446,24 @@ export async function configureAgentsSdk(ctx: AgentContext): Promise<void> {
           body,
           keepalive: false,
         });
+        // SELF-HEAL retry: if the token rotated in the window between minting it
+        // above and the gateway validating it, we get a 401. Re-mint the SP token
+        // ONCE and retry the SAME request. A 401 is a small, non-streamed error
+        // body, so re-issuing the fetch is safe — we only ever retry BEFORE the
+        // (successful) streamed body is consumed, never buffering/replaying it.
+        // If it still 401s, fall through and return the response (no infinite loop).
+        if (resp.status === 401) {
+          console.warn(`[openai-shim] 401 from ${url} — re-minting SP token and retrying once`);
+          const retryHeaders = new Headers(headers);
+          const reAuth = (await serviceAuthHeaders()).get('Authorization');
+          if (reAuth) retryHeaders.set('Authorization', reAuth);
+          resp = await fetch(input as Parameters<typeof fetch>[0], {
+            ...init,
+            headers: retryHeaders,
+            body,
+            keepalive: false,
+          });
+        }
       } catch (e) {
         console.error('[openai-shim] fetch threw', { url, error: e });
         throw e;
