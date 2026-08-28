@@ -12,7 +12,7 @@
  * app.action_recommendations, app.creatives). recordCampaignAction is the
  * ONLY writer — it inserts into the app's own app.campaign_actions_app table.
  */
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import type { AppDb } from '../index.js';
 import {
   campaignPosition,
@@ -218,18 +218,25 @@ export async function getRecommendation(
 }
 
 /**
- * Full-text search over the creative catalog — the Lakebase Search showcase.
+ * BM25 search over the creative catalog — the Lakebase Search showcase.
  *
- * Retrieves DIRECTLY from the Lakebase Search index: a Postgres full-text
- * (tsvector) GIN index over the creative's searchable text (name + angle +
- * type + description), defined on `app.creatives` as `creatives_fts_idx`
- * (see schema.ts). This keeps retrieval INSIDE Lakebase — no separate vector
- * store. The `docExpr` below is the SAME to_tsvector(...) expression the index
- * is built on, so the planner can use the GIN index for the `@@` match.
+ * Retrieves DIRECTLY from the Build-1 Lakebase Search index: a BM25 index
+ * (the `lakebase_text` extension's `lakebase_bm25` access method) built on
+ * `app.creatives` over the creative's searchable text (name + angle + type +
+ * description). We query it with the extension's `<@> to_bm25query(...)`
+ * operator, which returns a BM25 relevance score per row — so retrieval stays
+ * INSIDE Lakebase, pulling from that one index, with no separate vector store
+ * and no ILIKE scan.
  *
- * Natural queries ("social lifestyle", "back to school promo") are parsed with
- * websearch_to_tsquery; results are ranked by ts_rank relevance, then name.
- * Only active creatives; top matches first.
+ * The index is provisioned OUT-OF-BAND (see schema.ts) as
+ * `app.creatives_bm25_idx`: `app.creatives` is owned by a different principal
+ * than the app service principal, so the app cannot create it in a boot
+ * migration ("must be owner") — it is managed externally, NOT by Drizzle.
+ *
+ * `to_bm25query` takes the query tsvector and the SCHEMA-QUALIFIED index name
+ * ('app.creatives_bm25_idx'). lakebase_bm25 scores are NEGATIVE — smaller
+ * (more negative) means more relevant — so we ORDER BY score ASC. Only active
+ * creatives (prefiltered); top matches first.
  */
 export async function searchCreatives(
   db: AppDb,
@@ -237,30 +244,50 @@ export async function searchCreatives(
   limit = 8,
 ): Promise<CreativeRow[]> {
   const q = query.trim();
+  // Blank/whitespace query has nothing to rank — skip the BM25 call rather than
+  // hand to_bm25query an empty tsvector. (No ILIKE fallback: retrieval is BM25.)
   if (!q) return [];
 
-  // The indexed full-text document: MUST match creatives_fts_idx exactly so
-  // the GIN index is used. name + angle + type + description, English config.
-  const docExpr = sql`to_tsvector('english', coalesce(${creatives.creativeName}, '') || ' ' || coalesce(${creatives.angle}, '') || ' ' || coalesce(${creatives.creativeType}, '') || ' ' || coalesce(${creatives.description}, ''))`;
+  // The searchable document MUST match the expression creatives_bm25_idx is
+  // built on (name + angle + type + description, English config) so the BM25
+  // index is used. The `<@> to_bm25query(...)` operator yields the BM25 score.
+  const result = await db.execute(sql`
+    SELECT
+      id,
+      creative_id,
+      creative_name,
+      creative_type,
+      angle,
+      description,
+      is_active,
+      (
+        to_tsvector(
+          'english',
+          coalesce(creative_name, '') || ' ' || coalesce(angle, '') || ' '
+            || coalesce(creative_type, '') || ' ' || coalesce(description, '')
+        )
+        <@> to_bm25query(
+          to_tsvector('english', ${q}),
+          'app.creatives_bm25_idx'
+        )
+      ) AS score
+    FROM app.creatives
+    WHERE is_active
+    ORDER BY score ASC
+    LIMIT ${limit}
+  `);
 
-  // Primary query parser: websearch_to_tsquery handles natural phrases like
-  // "social lifestyle" or 'back to school -clearance'.
-  const websearch = sql`websearch_to_tsquery('english', ${q})`;
-  // Graceful prefix fallback for very short/odd queries ("lux" → "luxe…"):
-  // rewrite each lexeme of plainto_tsquery to a prefix (:*) tsquery. This stays
-  // a SINGLE Lakebase FTS query (no ILIKE), still index-backed by the same
-  // tsvector `@@`. Empty for all-stopword input, which is harmless.
-  const prefix = sql`to_tsquery('english', regexp_replace(plainto_tsquery('english', ${q})::text, '''(\\s|$)', ''':*\\1', 'g'))`;
-  // Combined query used for BOTH the match predicate and the relevance rank.
-  const tsq = sql`(${websearch} || ${prefix})`;
-
-  return db
-    .select()
-    .from(creatives)
-    .where(and(eq(creatives.isActive, true), sql`${docExpr} @@ ${tsq}`))
-    // Rank by full-text relevance (ts_rank), then stable by name.
-    .orderBy(desc(sql`ts_rank(${docExpr}, ${tsq})`), creatives.creativeName)
-    .limit(limit);
+  // Map snake_case DB columns → the camelCase CreativeRow shape the
+  // search_creatives tool consumes (unchanged).
+  return (result.rows as Record<string, unknown>[]).map((r) => ({
+    id: r.id as string,
+    creativeId: r.creative_id as string,
+    creativeName: r.creative_name as string | null,
+    creativeType: r.creative_type as string | null,
+    angle: r.angle as string | null,
+    description: r.description as string | null,
+    isActive: r.is_active as boolean | null,
+  }));
 }
 
 /**
