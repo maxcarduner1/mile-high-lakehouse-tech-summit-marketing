@@ -1,0 +1,23 @@
+[
+  {
+    "id": "b1de8a8e-cac0-469c-910a-4942fcf68e8b",
+    "campaign_id": "CMP-0000790",
+    "action_type": "replicate_winner",
+    "target_campaign_id": "CMP-0000469",
+    "drafted_brief": "Replicate the proven winning strategy from CMP-0000469 into CMP-0000790. Adapt CMP-0000790 to mirror the winner\u2019s core campaign structure, creative approach, audience targeting, channel mix, and offer/messaging patterns while preserving brand compliance and current campaign objectives. Prioritize the elements associated with CMP-0000469\u2019s stronger ROAS performance, launch as a controlled optimization update, and monitor post-change ROAS, spend efficiency, conversion rate, and revenue lift against the existing CMP-0000790 baseline.",
+    "predicted_roas_lift": 2.304,
+    "status": "approved",
+    "approved_by": "max.carduner@databricks.com",
+    "audit_trail": [
+      {
+        "at": "2026-08-28T00:27:34.406Z",
+        "by": "max.carduner@databricks.com",
+        "tool": "execute_campaign_action",
+        "notes": "Campaign action recorded",
+        "action": "approved"
+      }
+    ],
+    "created_at": "2026-08-28T00:27:34.408602+00:00",
+    "decided_at": "2026-08-28T00:27:34.406+00:00"
+  }
+]

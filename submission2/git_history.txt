@@ -1,4 +1,15 @@
-* 5ab918c (HEAD -> build/brightwave-app, origin/build/brightwave-app) Add session handoff doc for Arca runner
+* 849532f (HEAD -> build/brightwave-app, origin/build/brightwave-app) Track post-handoff progress: PR10/11 merged+deployed, refresh trigger green, action_recs populated, hero=CMP-0000790
+*   8183f43 Merge pull request #11 from maxcarduner1/fix/refresh-job-crash
+|\  
+| * 7d12058 (origin/fix/refresh-job-crash, fix/refresh-job-crash) Make refresh job deploy-clean: drop run_as, fix dev-mode schema mangling
+| * b032869 Fix Brightwave refresh trigger job (serverless kernel SIGABRT — Lakebase connect)
+* |   3be4e3e Merge pull request #10 from maxcarduner1/fix/action-recommendations-sync
+|\ \  
+| |/  
+|/|   
+| * d226f6b (origin/fix/action-recommendations-sync, fix/action-recommendations-sync) Fix action_recommendations sync: action_ranking is already JSON string (drop to_json cast)
+|/  
+* 5ab918c Add session handoff doc for Arca runner
 *   bc43634 Merge pull request #9 from maxcarduner1/build/brightwave-layer1-trigger
 |\  
 | * 93191e3 (origin/build/brightwave-layer1-trigger, build/brightwave-layer1-trigger) Brightwave Build-2 Layer-1: defined trigger + workflow_state observability table

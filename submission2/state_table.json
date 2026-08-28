@@ -1,0 +1,98 @@
+[
+  {
+    "id": "556a9dc7-dfa9-4cd6-bf23-67eea1434d96",
+    "event_type": "trigger",
+    "trigger_source": "schedule",
+    "campaign_id": null,
+    "status": "ok",
+    "detail": {
+      "at": "2026-08-27T23:58:23.938141+00:00",
+      "source": "brightwave_refresh",
+      "rowCounts": {
+        "gold_campaign_position": null,
+        "gold_open_underperformers": null
+      }
+    },
+    "created_at": "2026-08-27T23:58:24.100034+00:00"
+  },
+  {
+    "id": "90bc6612-93b5-4cea-8da7-ad32369b3d84",
+    "event_type": "trigger",
+    "trigger_source": "schedule",
+    "campaign_id": null,
+    "status": "ok",
+    "detail": {
+      "at": "2026-08-28T00:02:01.729532+00:00",
+      "source": "brightwave_refresh",
+      "rowCounts": {
+        "gold_campaign_position": null,
+        "gold_open_underperformers": null
+      }
+    },
+    "created_at": "2026-08-28T00:02:01.880825+00:00"
+  },
+  {
+    "id": "53d975de-9bb6-40ac-9bc0-2e2f0ac1edf1",
+    "event_type": "trigger",
+    "trigger_source": "schedule",
+    "campaign_id": null,
+    "status": "ok",
+    "detail": {
+      "at": "2026-08-28T00:02:15.033490+00:00",
+      "source": "brightwave_refresh",
+      "rowCounts": {
+        "gold_campaign_position": null,
+        "gold_open_underperformers": null
+      }
+    },
+    "created_at": "2026-08-28T00:02:15.181962+00:00"
+  },
+  {
+    "id": "101ea47d-8c94-4b61-9370-d41565505b01",
+    "event_type": "trigger",
+    "trigger_source": "schedule",
+    "campaign_id": null,
+    "status": "ok",
+    "detail": {
+      "at": "2026-08-28T00:09:29.138582+00:00",
+      "source": "brightwave_refresh",
+      "rowCounts": {
+        "gold_campaign_position": 2001,
+        "gold_open_underperformers": 88
+      }
+    },
+    "created_at": "2026-08-28T00:09:29.280851+00:00"
+  },
+  {
+    "id": "5023ab25-201a-4c3a-a2eb-34f92a12aac0",
+    "event_type": "trigger",
+    "trigger_source": "schedule",
+    "campaign_id": null,
+    "status": "ok",
+    "detail": {
+      "at": "2026-08-28T00:15:51.145456+00:00",
+      "source": "brightwave_refresh",
+      "rowCounts": {
+        "gold_campaign_position": 2001,
+        "gold_open_underperformers": 88
+      }
+    },
+    "created_at": "2026-08-28T00:15:51.280999+00:00"
+  },
+  {
+    "id": "f06da211-82d3-478a-89d3-bde9c65bd503",
+    "event_type": "decision",
+    "trigger_source": "user",
+    "campaign_id": "CMP-0000790",
+    "status": "approved",
+    "detail": {
+      "at": "2026-08-28T00:27:34.406Z",
+      "by": "max.carduner@databricks.com",
+      "actionId": "b1de8a8e-cac0-469c-910a-4942fcf68e8b",
+      "actionType": "replicate_winner",
+      "targetCampaignId": "CMP-0000469",
+      "predictedRoasLift": 2.304
+    },
+    "created_at": "2026-08-28T00:27:34.408602+00:00"
+  }
+]
