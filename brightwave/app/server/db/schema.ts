@@ -206,8 +206,15 @@ export const actionRecommendations = appSchema.table(
   (t) => [index('recommendations_campaign_idx').on(t.campaignId)],
 );
 
-// `raw_creatives` — campaign creative catalog (name + description).
-// Searchable `description` is indexed by Lakebase Search for the `search_creatives` tool.
+// `raw_creatives` — campaign creative catalog (name + angle + type + description).
+// The searchable text is retrieved from the Build-1 Lakebase Search BM25 index
+// — the `lakebase_text` extension's `lakebase_bm25` access method over the
+// creative's searchable text — which the `search_creatives` tool queries
+// directly with the `<@> to_bm25query(...)` operator (see searchCreatives in
+// queries/campaigns.ts). That BM25 index (`app.creatives_bm25_idx`) is
+// provisioned OUT-OF-BAND, not by Drizzle: `app.creatives` is owned by a
+// different principal than the app service principal, so a boot migration that
+// created it would fail with "must be owner". See the index comment below.
 export const creatives = appSchema.table(
   'creatives',
   {
@@ -216,11 +223,30 @@ export const creatives = appSchema.table(
     creativeName: text('creative_name'),
     creativeType: text('creative_type'),
     angle: text('angle'),
-    // Searchable description (indexed by Lakebase Search).
+    // Part of the full-text search document (indexed by the GIN index below).
     description: text('description'),
     isActive: boolean('is_active'),
   },
-  (t) => [index('creatives_type_idx').on(t.creativeType)],
+  (t) => [
+    index('creatives_type_idx').on(t.creativeType),
+    // Lakebase Search BM25 index — provisioned OUT-OF-BAND, NOT by Drizzle.
+    //
+    // Retrieval for `search_creatives` pulls directly from a BM25 index built
+    // with the `lakebase_text` extension's `lakebase_bm25` access method:
+    //   CREATE INDEX creatives_bm25_idx ON app.creatives USING lakebase_bm25
+    //     ((to_tsvector('english', coalesce(creative_name,'') || ' '
+    //       || coalesce(angle,'') || ' ' || coalesce(creative_type,'') || ' '
+    //       || coalesce(description,''))) tsvector_bm25_ops);
+    // Queried with `<@> to_bm25query(to_tsvector('english', $q),
+    // 'app.creatives_bm25_idx')` — see searchCreatives in queries/campaigns.ts.
+    //
+    // It is intentionally NOT declared as a Drizzle index() here (and so never
+    // emitted into a migration): `app.creatives` is owned by a different
+    // principal than the app service principal, so an SP-run boot migration
+    // that issued CREATE EXTENSION / CREATE INDEX would fail with "must be
+    // owner". The extension + index are installed externally by the
+    // orchestrator; this comment records their identity for future readers.
+  ],
 );
 
 // ============================================================================
