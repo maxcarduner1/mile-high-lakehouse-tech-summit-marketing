@@ -1,0 +1,45 @@
+* 5ab918c (HEAD -> build/brightwave-app, origin/build/brightwave-app) Add session handoff doc for Arca runner
+*   bc43634 Merge pull request #9 from maxcarduner1/build/brightwave-layer1-trigger
+|\  
+| * 93191e3 (origin/build/brightwave-layer1-trigger, build/brightwave-layer1-trigger) Brightwave Build-2 Layer-1: defined trigger + workflow_state observability table
+* |   5184711 Merge pull request #8 from maxcarduner1/fix/brightwave-genie-mas-sp-auth
+|\ \  
+| * | 89f1ae2 (origin/fix/brightwave-genie-mas-sp-auth, fix/brightwave-genie-mas-sp-auth) Authenticate MLflow trace assessments as app SP, not user OBO
+| * | 71ea879 Authenticate Genie/MAS data tools as app SP, not user OBO
+|/ /  
+* |   440e7e3 Merge pull request #7 from maxcarduner1/remove-dashboard-tab
+|\ \  
+| * | 9d4a33f (origin/remove-dashboard-tab, remove-dashboard-tab) Remove Dashboard tab from Brightwave app sidebar
+| |/  
+* |   665d08d Merge pull request #6 from maxcarduner1/build/brightwave-agent-sp-auth
+|\ \  
+| |/  
+|/|   
+| * e1c6bb2 (origin/build/brightwave-agent-sp-auth, build/brightwave-agent-sp-auth) Authenticate Brightwave agent gateway call as app SP, not user OBO
+|/  
+*   5bb02af Merge pull request #5 from maxcarduner1/fix/brightwave-runtime-bugs
+|\  
+| * 42e1148 (origin/fix/brightwave-runtime-bugs, fix/brightwave-runtime-bugs) Fix two Brightwave app runtime errors: stale LuxeBeauty queries + MLflow auth conflict
+* |   5ce6d39 Merge pull request #4 from maxcarduner1/fix/brightwave-obo-user-api-scopes
+|\ \  
+| * | 6fcec61 (origin/fix/brightwave-obo-user-api-scopes, fix/brightwave-obo-user-api-scopes) Make Brightwave OBO user_api_scopes durable in the DAB bundle
+| |/  
+| * 09a8986 Deploy plumbing: container build no-op + DAB sync.include for prebuilt dist + lockfile registry rewrite
+|/  
+*   9abc683 Merge pull request #3 from maxcarduner1/bw/app-build-and-gateway
+|\  
+| * 9e5fdf7 Unblock deploy: commit AppKit manifest+lockfile + repoint agent at AI Gateway
+|/  
+*   ed55866 Merge pull request #1 from maxcarduner1/bw/dab-app-deploy
+|\  
+| * c132fc7 (origin/bw/dab-app-deploy, bw/dab-app-deploy) Fix stale header comment + add deploy runbook
+| * 357c79d Wire Brightwave Campaign Desk app into the DAB
+* |   bfb90e4 Merge pull request #2 from maxcarduner1/bw/app-agent-tools
+|\ \  
+| |/  
+|/|   
+| * 6e6330c (origin/bw/app-agent-tools, bw/app-agent-tools) Implement Build-2/Build-3 agent tools for Brightwave Campaign Desk
+|/  
+* 57268d7 (origin/main, origin/development, origin/HEAD, main) commit
+* dbe13db init
+* 13bf861 Add cleaned-up Mile High Lakehouse marketing briefing.
