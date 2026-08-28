@@ -1,4 +1,9 @@
-*   8c93bf2 (HEAD -> build/brightwave-app, origin/build/brightwave-app) Merge pull request #12 from maxcarduner1/fix/lakebase-search-creatives
+*   6aafd95 (HEAD -> build/brightwave-app, origin/build/brightwave-app) Merge pull request #13 from maxcarduner1/feat/switch-to-production-branch
+|\  
+| * 6c7312d (origin/feat/switch-to-production-branch, feat/switch-to-production-branch) Switch app to Build-1 production Lakebase branch + retrieve from Angela's campaign_search index
+|/  
+* 0e083dd submission2: add Lakebase Search BM25 retrieval evidence (search_creatives over app.creatives_bm25_idx)
+*   8c93bf2 Merge pull request #12 from maxcarduner1/fix/lakebase-search-creatives
 |\  
 | * 1cefe65 (origin/fix/lakebase-search-creatives, fix/lakebase-search-creatives) search_creatives: retrieve from Lakebase Search BM25 index (lakebase_text) not ILIKE
 | * 431c9c1 search_creatives: retrieve from a Lakebase Search (Postgres FTS) index, not ILIKE

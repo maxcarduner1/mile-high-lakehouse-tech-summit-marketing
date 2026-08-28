@@ -10,9 +10,17 @@
 --
 -- Runtime form: the app reads the Lakebase synced mirror (app.campaign_position,
 -- app.open_underperformers, app.action_recommendations) + its own writable
--- app.campaign_actions_app via Drizzle. The equivalent Databricks SQL below runs
--- against the Build-1 Gold Delta tables (serverless warehouse) and returns the
--- same ranked result — this is what produced view_result.json.
+-- app.campaign_actions_app via Drizzle, on Angela's Build-1 **production**
+-- Lakebase branch (projects/birghtwave/branches/production). The query below is
+-- the app.* form actually run against that branch — this is what produced
+-- view_result.json (hero CMP-0000790 at rank #3, with its committed
+-- replicate_winner action reflected on the next read — the closed loop).
+-- (An equivalent Databricks SQL form runs against the Build-1 Gold Delta tables
+-- via the serverless warehouse and returns the same ranking.)
+--
+-- Separately, the replicate play's creative grounding is retrieved DIRECTLY from
+-- Angela's Build-1 Lakebase Search index brightwave.campaign_search (BM25 over
+-- summary_tsv) via the search_creatives tool — see assist_log.jsonl.
 --
 -- Hero record: CMP-0000790 (apparel / gen_z / display, ROAS 1.15, recoverable
 -- $196,579.69) whose matching winner is CMP-0000469 (ROAS 4.99).

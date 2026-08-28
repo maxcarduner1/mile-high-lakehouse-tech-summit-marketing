@@ -8,9 +8,15 @@ ones that aren't?"
 
 Answered as a DECISION (surface → prescribe → approve → act), not a lookup:
 the Campaign Desk surfaces the highest-value *recoverable* underperformer that
-has a proven matching winner, the assistant explains WHY and drafts the memo,
-a human approves, and the committed decision is written back and reflected on
-the next read.
+has a proven matching winner, the assistant explains WHY and drafts the memo
+(grounding the replicate play on the Build-1 Lakebase Search index), a human
+approves, and the committed decision is written back and reflected on the next
+read.
+
+Environment: the app runs against Angela's Build-1 **production** Lakebase
+branch (projects/birghtwave/branches/production). Retrieval for the replicate
+play comes DIRECTLY from her Build-1 Lakebase Search index
+`brightwave.campaign_search` (BM25 over summary_tsv) — no separate vector store.
 
 
 THE DECISION CHAIN — LINKED RECORD IDs
@@ -22,17 +28,20 @@ Hero underperformer .......... CMP-0000790  "Apparel Display Q2"
      matching winner to replicate — the top actionable opportunity)
 
 Matching winner (to replicate)  CMP-0000469  "Apparel Social Q1"
-    apparel / gen_z · ROAS 4.99 · perf_band = winner
+    apparel / gen_z · social · ROAS 4.99 · perf_band = winner
     Same category + audience, far higher ROAS → the pattern to copy.
+    Surfaced by search_creatives directly from brightwave.campaign_search
+    (Angela's Build-1 Lakebase Search / BM25 index) as a top "social lifestyle
+    apparel" hit.
 
-ML recommendation (gold_action_recommendations, campaign CMP-0000790):
+ML recommendation (app.action_recommendations, campaign CMP-0000790):
     recommended_action .......... replicate_winner
     predicted_roas_lift ......... +2.304
     predicted_net_value_usd ..... $450,919.61
     (ranked above reallocate_budget (+1.535) and pause (0))
 
-Committed action (app.campaign_actions_app):
-    action_id ................... b1de8a8e-cac0-469c-910a-4942fcf68e8b
+Committed action (app.campaign_actions_app, production branch):
+    action_id ................... f32ff1f8-5df5-4325-b00f-a7f1bf58a492
     campaign_id ................. CMP-0000790
     action_type ................. replicate_winner
     target_campaign_id .......... CMP-0000469
@@ -43,20 +52,24 @@ Committed action (app.campaign_actions_app):
 Observability (app.workflow_state):
     decision event .............. campaign CMP-0000790, trigger_source=user,
                                   status=approved (mirrors the committed action)
-    trigger events .............. scheduled brightwave_refresh job (defined
+    trigger events .............. scheduled brightwave_refresh job (the defined
                                   trigger) — system updates, timestamped
 
 
 HOW THE CHAIN THREADS THROUGH THE EVIDENCE FILES
 ------------------------------------------------
-view_query.sql / view_result.json  → surfaces CMP-0000790 in the ranked view
-assist_log.jsonl                    → the WHY (CMP-0000790 vs CMP-0000469) + a
-                                      what-if scenario on the replicate uplift
+view_query.sql / view_result.json  → surfaces CMP-0000790 in the ranked view,
+                                      with its committed replicate_winner action
+                                      reflected on the next read (closed loop)
+assist_log.jsonl                    → the WHY (CMP-0000790 vs CMP-0000469), a
+                                      what-if scenario, and a search_creatives
+                                      call retrieving from brightwave.campaign_search
 drafted_sample.md                   → the auto-drafted approval memo (790←469)
-writeback_table.json                → the approved action b1de8a8e… (790→469)
+writeback_table.json                → the approved action f32ff1f8… (790→469)
 state_table.json                    → the decision event for CMP-0000790 +
                                       the scheduled trigger events
 git_history.txt                     → the layer-by-layer build on the dev branch
 
 All exports reference the SAME campaign (CMP-0000790) and the SAME winner
-(CMP-0000469), forming one coherent, data-backed decision.
+(CMP-0000469), forming one coherent, data-backed decision on Angela's Build-1
+production branch.

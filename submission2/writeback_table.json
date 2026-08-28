@@ -1,23 +1,23 @@
 [
   {
-    "id": "b1de8a8e-cac0-469c-910a-4942fcf68e8b",
+    "id": "f32ff1f8-5df5-4325-b00f-a7f1bf58a492",
     "campaign_id": "CMP-0000790",
     "action_type": "replicate_winner",
     "target_campaign_id": "CMP-0000469",
-    "drafted_brief": "Replicate the proven winning strategy from CMP-0000469 into CMP-0000790. Adapt CMP-0000790 to mirror the winner\u2019s core campaign structure, creative approach, audience targeting, channel mix, and offer/messaging patterns while preserving brand compliance and current campaign objectives. Prioritize the elements associated with CMP-0000469\u2019s stronger ROAS performance, launch as a controlled optimization update, and monitor post-change ROAS, spend efficiency, conversion rate, and revenue lift against the existing CMP-0000790 baseline.",
+    "drafted_brief": "Replicate winning campaign CMP-0000469 into underperforming campaign CMP-0000790. Adapt CMP-0000469\u2019s high-performing Apparel Social Q1 creative approach for CMP-0000790\u2019s Apparel Display Q2 placement, preserving the proven winner\u2019s core value proposition, audience cues, offer framing, and visual/creative angle while resizing and tailoring assets for display inventory. Focus on translating the winner\u2019s engagement-driven creative into concise display messaging with a clear CTA, lifestyle-led apparel imagery, and audience targeting aligned to the successful CMP-0000469 segment. Launch as an optimization refresh for CMP-0000790, monitor ROAS, CTR, CPA, and spend efficiency, and compare performance against the current CMP-0000790 baseline ROAS of 1.15.",
     "predicted_roas_lift": 2.304,
     "status": "approved",
     "approved_by": "max.carduner@databricks.com",
     "audit_trail": [
       {
-        "at": "2026-08-28T00:27:34.406Z",
+        "at": "2026-08-28T02:47:34.831Z",
         "by": "max.carduner@databricks.com",
         "tool": "execute_campaign_action",
         "notes": "Campaign action recorded",
         "action": "approved"
       }
     ],
-    "created_at": "2026-08-28T00:27:34.408602+00:00",
-    "decided_at": "2026-08-28T00:27:34.406+00:00"
+    "created_at": "2026-08-28T02:47:34.834096+00:00",
+    "decided_at": "2026-08-28T02:47:34.831+00:00"
   }
 ]

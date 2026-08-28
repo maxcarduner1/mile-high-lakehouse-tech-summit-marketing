@@ -60,7 +60,30 @@ replicate that across the ones that aren't?"* — hero record: **CMP-0000214**
 
 ---
 
-## ✅ VALIDATOR GAP CLOSED: Lakebase Search retrieval (PR #12 merged)
+## ✅ SWITCHED TO ANGELA'S BUILD-1 PRODUCTION BRANCH (PR #13 merged)
+
+- The exercise intends the app to run on Angela's Build-1 branch. Switched the
+  whole app from the development to the **production** Lakebase branch
+  (projects/birghtwave/branches/production) — one DAB var change; app is
+  decoupled from the branch (recreates app.* mirror fresh at boot; SP can create
+  schemas on prod, no grant needed).
+- `search_creatives` now retrieves DIRECTLY from Angela's real Build-1 Lakebase
+  Search index `brightwave.campaign_search` (campaign_search_bm25, lakebase_bm25
+  over the pre-generated summary_tsv) via `<@> to_bm25query(...)`. Returns
+  campaign rows (winning campaigns/angles to replicate); top hit for
+  'social lifestyle apparel' is CMP-0000469 (our hero winner).
+- Dropped the raw_creatives sync leg (production has no raw_creatives Delta
+  source; the leg wasn't graceful-caught → would 503 boot). PR #13 reviewed PASS
+  (same-vendor), merged, deployed, live-verified on production.
+- submission2 REGENERATED on production (all 8 artifacts consistent on the
+  branch we submit from): 5 assist interactions incl. search_creatives over
+  campaign_search + execute_campaign_action; writeback action
+  f32ff1f8-5df5-4325-b00f-a7f1bf58a492 (790->469 approved); state_table 2
+  trigger + 1 decision; view_result hero rank #3 with replicate_winner action
+  reflected (closed loop). submission2.zip rebuilt (~46KB).
+- Old dev-branch BM25 index (app.creatives_bm25_idx) is now unused/irrelevant.
+
+## ✅ VALIDATOR GAP (earlier, dev): Lakebase Search retrieval (PR #12 merged)
 
 - Feedback was: "app is missing retrieval from the Build-1 Lakebase Search
   index; pull from that index directly rather than a separate store."
